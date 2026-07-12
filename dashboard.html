@@ -1,0 +1,2198 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Панель фабрики — FicsIt Remote Monitoring</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1d2026">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root {
+    --bg: #14161a;
+    --panel: #1d2026;
+    --panel2: #24282f;
+    --border: #32363e;
+    --text: #e8e6e3;
+    --muted: #9a9fa8;
+    --orange: #fa9549;
+    --green: #4caf50;
+    --red: #ef5350;
+    --yellow: #ffc94d;
+    --blue: #64b5f6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif; font-size: 14px;
+  }
+  header {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 12px 20px; background: var(--panel); border-bottom: 2px solid var(--orange);
+    position: sticky; top: 0; z-index: 10;
+  }
+  header h1 { font-size: 18px; margin: 0; color: var(--orange); white-space: nowrap; }
+  .tabs { display: flex; gap: 4px; }
+  .tab {
+    padding: 8px 18px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--panel2); color: var(--muted); cursor: pointer; font-size: 14px;
+  }
+  .tab.active { background: var(--orange); color: #1a1a1a; font-weight: 600; border-color: var(--orange); }
+  .spacer { flex: 1; }
+  .conn { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--red); }
+  .dot.ok { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  main { padding: 16px 20px 40px; max-width: 1400px; margin: 0 auto; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px;
+  }
+  .card .label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .card .value { font-size: 24px; font-weight: 700; }
+  .card .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .card.red .value { color: var(--red); }
+  .card.green .value { color: var(--green); }
+  .card.yellow .value { color: var(--yellow); }
+  .card.orange .value { color: var(--orange); }
+  .card.blue .value { color: var(--blue); }
+
+  .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .toolbar input[type=text] {
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); padding: 8px 12px; width: 260px; font-size: 14px;
+  }
+  .toolbar label { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  select {
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); padding: 8px 10px; font-size: 13px;
+  }
+
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 8px; overflow: hidden; }
+  th, td { padding: 8px 12px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  th {
+    background: var(--panel2); color: var(--muted); font-size: 12px; text-transform: uppercase;
+    letter-spacing: .4px; cursor: pointer; user-select: none;
+  }
+  th:hover { color: var(--orange); }
+  tr:hover td { background: rgba(250,149,73,.05); }
+  td.num { font-variant-numeric: tabular-nums; }
+  .pos { color: var(--green); }
+  .neg { color: var(--red); font-weight: 600; }
+  .zero { color: var(--muted); }
+
+  .badge {
+    display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 11px; font-weight: 600;
+  }
+  .b-deficit  { background: rgba(239,83,80,.18); color: var(--red); }
+  .b-limit    { background: rgba(255,201,77,.15); color: var(--yellow); }
+  .b-ok       { background: rgba(76,175,80,.15); color: var(--green); }
+  .b-idle     { background: rgba(154,159,168,.15); color: var(--muted); }
+  .b-noprod   { background: rgba(239,83,80,.3); color: #ffb3b1; }
+  .b-surplus  { background: rgba(100,181,246,.15); color: var(--blue); }
+  .btn-toggle {
+    padding: 3px 12px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--panel2); color: var(--text); cursor: pointer; font-size: 12px;
+  }
+  .btn-toggle:hover { border-color: var(--orange); color: var(--orange); }
+  .btn-toggle:disabled { opacity: .4; cursor: wait; }
+  .btn-toggle.off { border-color: var(--green); color: var(--green); }
+
+  /* модальное окно предмета */
+  #modalBack {
+    position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 50; display: none;
+  }
+  #itemModal {
+    position: fixed; top: 4vh; left: 50%; transform: translateX(-50%);
+    width: min(940px, 95vw); max-height: 92vh; overflow-y: auto;
+    background: var(--bg); border: 1px solid var(--orange); border-radius: 12px;
+    padding: 20px 24px; z-index: 51; display: none;
+  }
+  #itemModal h2 { margin-top: 18px; }
+  #itemModal .mhead { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  #itemModal .mhead h1 { font-size: 22px; margin: 0; color: var(--orange); }
+  #itemModal .mclose {
+    margin-left: auto; background: var(--panel2); border: 1px solid var(--border);
+    color: var(--text); font-size: 18px; width: 34px; height: 34px; border-radius: 8px; cursor: pointer;
+  }
+  #itemModal .mclose:hover { border-color: var(--red); color: var(--red); }
+  .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 800px) { .twocol { grid-template-columns: 1fr; } }
+  .userlist { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; }
+  .userlist .urow { padding: 7px 0; border-bottom: 1px solid var(--border); }
+  .userlist .urow:last-child { border-bottom: none; }
+  .userlist .utitle { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+  .userlist .urecipe { color: var(--muted); font-size: 11px; margin-top: 1px; }
+  .userlist .hbar { height: 7px; background: var(--panel2); border-radius: 4px; margin-top: 5px; overflow: hidden; }
+  .userlist .hbar i { display: block; height: 100%; border-radius: 4px; }
+  #prodTable tbody tr { cursor: pointer; }
+  #genTable tbody tr { cursor: pointer; }
+
+  /* круговой рубильник генераторов */
+  #genModal {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: min(400px, 92vw); background: var(--bg); border: 1px solid var(--orange);
+    border-radius: 14px; padding: 22px 26px; z-index: 51; display: none; text-align: center;
+  }
+  #genModal h1 { font-size: 18px; color: var(--orange); margin: 0 0 4px; }
+  #genModal .gsub { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+  .gendial { touch-action: none; user-select: none; cursor: pointer; }
+  .gendial .handle { cursor: grab; }
+  .gendial .handle:active { cursor: grabbing; }
+  #genModal .gdiff { min-height: 18px; font-size: 13px; margin: 6px 0 12px; color: var(--muted); }
+  #genModal .gbtns { display: flex; gap: 10px; justify-content: center; }
+  #genModal .gbtns button {
+    padding: 9px 22px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--panel2); color: var(--text); cursor: pointer; font-size: 14px;
+  }
+  #genModal .gbtns .apply { background: var(--orange); border-color: var(--orange); color: #1a1a1a; font-weight: 600; }
+  #genModal .gbtns .apply:disabled { opacity: .4; cursor: default; }
+  #genModal .stepbtn {
+    width: 38px; height: 38px; border-radius: 50%; font-size: 20px; line-height: 1;
+    background: var(--panel2); border: 1px solid var(--border); color: var(--text); cursor: pointer;
+  }
+  #genModal .stepbtn:hover { border-color: var(--orange); color: var(--orange); }
+  .rangebtns { margin-left: 10px; display: inline-flex; gap: 4px; vertical-align: middle; }
+  .rangebtns button {
+    padding: 2px 10px; font-size: 11px; background: var(--panel2);
+    border: 1px solid var(--border); color: var(--muted); border-radius: 5px; cursor: pointer;
+  }
+  .rangebtns button.active { color: var(--orange); border-color: var(--orange); }
+
+  /* панель настроек уведомлений */
+  #notifPanel {
+    position: fixed; top: 58px; right: 16px; z-index: 60;
+    background: var(--panel); border: 1px solid var(--orange); border-radius: 10px;
+    padding: 14px 18px; display: flex; flex-direction: column; gap: 8px;
+    box-shadow: 0 6px 24px rgba(0,0,0,.5); min-width: 280px;
+  }
+  #notifPanel.hidden { display: none; }
+  #notifPanel .ntitle { font-weight: 600; color: var(--orange); margin-bottom: 2px; }
+  #notifPanel label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; }
+  #notifPanel .nhint { color: var(--muted); font-size: 11px; margin: -4px 0 2px 24px; }
+
+  .bar { display: inline-block; width: 80px; height: 8px; background: var(--panel2); border-radius: 4px; overflow: hidden; vertical-align: middle; margin-left: 8px; }
+  .bar > i { display: block; height: 100%; border-radius: 4px; }
+
+  h2 { font-size: 16px; color: var(--orange); margin: 24px 0 10px; }
+  h2:first-child { margin-top: 0; }
+
+  .advice { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 4px 16px 12px; margin-bottom: 16px; }
+  .advice ul { margin: 8px 0 0; padding-left: 20px; }
+  .advice li { margin: 6px 0; line-height: 1.45; }
+  .advice .item-name { color: var(--orange); font-weight: 600; }
+  .advice .hint { color: var(--muted); }
+
+  .circuit {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 18px; margin-bottom: 14px;
+  }
+  .circuit.fuse { border-color: var(--red); box-shadow: 0 0 12px rgba(239,83,80,.35); }
+  .circuit h3 { margin: 0 0 10px; font-size: 15px; }
+  .powergrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .pstat .label { font-size: 11px; color: var(--muted); }
+  .pstat .value { font-size: 19px; font-weight: 700; }
+  .pbar { height: 14px; background: var(--panel2); border-radius: 7px; overflow: hidden; margin-top: 12px; position: relative; }
+  .pbar > i { display: block; height: 100%; transition: width .5s; }
+  .pbar span { position: absolute; inset: 0; text-align: center; font-size: 11px; line-height: 14px; color: #fff; text-shadow: 0 0 3px #000; }
+  canvas { width: 100%; height: 180px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; }
+  .err {
+    background: rgba(239,83,80,.12); border: 1px solid var(--red); color: #ffb3b1;
+    padding: 14px 18px; border-radius: 8px; margin-bottom: 16px; display: none;
+  }
+  .hidden { display: none !important; }
+  footer { text-align: center; color: var(--muted); font-size: 11px; margin-top: 30px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⚙ Панель фабрики</h1>
+  <div class="tabs">
+    <button class="tab active" data-tab="prod">Производство</button>
+    <button class="tab" data-tab="storage">📦 Склады</button>
+    <button class="tab" data-tab="machines">🏭 Станки</button>
+    <button class="tab" data-tab="power">⚡ Электричество</button>
+    <button class="tab" data-tab="calc">🧮 Калькулятор</button>
+  </div>
+  <div class="spacer"></div>
+  <button id="notifCfgBtn" class="tab" title="Уведомления и токен управления">⚙ настройки</button>
+  <button id="installBtn" class="tab" style="display:none;border-color:var(--orange);color:var(--orange)" title="Установить панель как отдельное приложение">⬇ установить</button>
+
+  <div id="notifPanel" class="hidden">
+    <div class="ntitle">Куда отправлять тревоги</div>
+    <label><input type="checkbox" id="optPush"> 🔔 Пуш-уведомления браузера</label>
+    <div class="nhint" id="pushHint"></div>
+    <label><input type="checkbox" id="optChat"> 💬 В игровой чат</label>
+    <div class="nhint">видно прямо в игре, от имени «Панель»</div>
+    <label><input type="checkbox" id="optSound"> 🔊 Звуковой сигнал на этой странице</label>
+    <button id="notifTestBtn" class="tab" style="margin-top:8px">Отправить тест</button>
+    <div class="ntitle" style="margin-top:10px">Управление фабрикой</div>
+    <input type="password" id="optToken" placeholder="Токен мода (Authentication Token)"
+      style="background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 10px">
+    <div class="nhint" style="margin-left:0">нужен для выкл/вкл станков, чата и меток.<br>Игра → Настройки → Моды → FicsIt Remote Monitoring</div>
+    <label style="margin-top:4px">Порт веб-сервера мода:
+      <input type="number" id="optApiPort" min="1" max="65535" style="width:90px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 8px">
+    </label>
+    <div class="nhint" style="margin-left:0">по умолчанию у мода 8080; после смены страница перезагрузится</div>
+  </div>
+  <div class="conn">
+    <span id="gameTime" style="font-size:15px;color:var(--text);font-variant-numeric:tabular-nums"></span>
+    <span id="connDot" class="dot"></span>
+    <span id="connText">подключение…</span>
+    <span id="lastUpdate"></span>
+  </div>
+</header>
+
+<main>
+  <div id="errBox" class="err"></div>
+  <div id="alertBox" class="err" style="border-color:var(--yellow);color:var(--yellow);background:rgba(255,201,77,.08)"></div>
+
+  <!-- ============ ВКЛАДКА: ПРОИЗВОДСТВО ============ -->
+  <section id="tab-prod">
+    <div class="cards" id="prodCards"></div>
+
+    <h2>🔧 Что исправить в первую очередь</h2>
+    <div class="advice" id="adviceBox"><p class="hint">Загрузка данных…</p></div>
+
+    <h2>📊 Все предметы</h2>
+    <div class="toolbar">
+      <input type="text" id="search" placeholder="Поиск предмета…">
+      <select id="statusFilter">
+        <option value="all">Все статусы</option>
+        <option value="deficit">Только дефицит</option>
+        <option value="limit">На пределе</option>
+        <option value="ok">В порядке</option>
+        <option value="surplus">Избыток мощности</option>
+        <option value="idle">Не используются</option>
+      </select>
+      <label><input type="checkbox" id="hideIdle" checked> скрыть неактивные</label>
+    </div>
+    <table id="prodTable">
+      <thead>
+        <tr>
+          <th data-k="Name">Предмет</th>
+          <th data-k="status">Статус</th>
+          <th data-k="CurrentProd">Произв., /мин</th>
+          <th data-k="MaxProd">Макс. произв.</th>
+          <th data-k="CurrentConsumed">Потребл., /мин</th>
+          <th data-k="MaxConsumed">Макс. потребл.</th>
+          <th data-k="balance">Баланс, /мин</th>
+          <th data-k="maxBalance">Баланс при 100%</th>
+          <th data-k="ProdPercent">Загрузка произв.</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <!-- ============ ВКЛАДКА: ЭЛЕКТРИЧЕСТВО ============ -->
+  <section id="tab-power" class="hidden">
+    <div class="cards" id="powerCards"></div>
+    <div id="batterySection" class="hidden"></div>
+    <h2>📈 Потребление электроэнергии <span id="powerRangeWrap"></span></h2>
+    <canvas id="powerChart" width="1200" height="180"></canvas>
+    <h2>🔌 Сети</h2>
+    <div id="circuits"></div>
+    <h2>🏭 Генераторы</h2>
+    <table id="genTable">
+      <thead>
+        <tr>
+          <th>Тип генератора</th>
+          <th>Кол-во</th>
+          <th>Мощность (макс.), МВт</th>
+          <th>Средняя нагрузка</th>
+          <th>Работают</th>
+          <th>Топливо</th>
+          <th>Запас</th>
+          <th>Хватит на</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <!-- ============ ВКЛАДКА: СКЛАДЫ ============ -->
+  <section id="tab-storage" class="hidden">
+    <div class="cards" id="storageCards"></div>
+    <h2>📦 Запасы во всех хранилищах</h2>
+    <div class="toolbar">
+      <input type="text" id="stSearch" placeholder="Поиск предмета…">
+      <select id="stFilter">
+        <option value="all">Все</option>
+        <option value="falling">Только тающие ↘</option>
+        <option value="rising">Только растущие ↗</option>
+      </select>
+    </div>
+    <table id="stTable">
+      <thead>
+        <tr>
+          <th data-k="Name">Предмет</th>
+          <th data-k="Amount">На складах, шт</th>
+          <th data-k="rate">Тренд, шт/мин</th>
+          <th data-k="eta">Прогноз</th>
+          <th>Динамика (10 мин)</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <p class="hint" style="color:var(--muted);font-size:12px">Тренд считается по изменению запаса за последние минуты. История сохраняется в браузере и переживает перезагрузку страницы.</p>
+  </section>
+
+  <!-- ============ ВКЛАДКА: СТАНКИ ============ -->
+  <section id="tab-machines" class="hidden">
+    <div class="cards" id="mCards"></div>
+    <h2>⚠ Проблемные станки</h2>
+    <div id="mProblems" class="advice"></div>
+    <h2>🏭 Все станки</h2>
+    <div class="toolbar">
+      <input type="text" id="mSearch" placeholder="Поиск по станку или рецепту…">
+      <label><input type="checkbox" id="mOnlyProblems"> только проблемные</label>
+      <span style="flex:1"></span>
+      <button id="bulkOff" class="btn-toggle" disabled>⏸ выключить выбранные</button>
+      <button id="bulkOn" class="btn-toggle off" disabled>▶ включить выбранные</button>
+    </div>
+    <table id="mTable">
+      <thead>
+        <tr>
+          <th style="width:34px"><input type="checkbox" id="mChkAll" title="Выбрать все видимые"></th>
+          <th data-k="Name">Станок</th>
+          <th data-k="Recipe">Рецепт</th>
+          <th data-k="status">Состояние</th>
+          <th data-k="load">Загрузка</th>
+          <th data-k="input">Вход. буфер</th>
+          <th data-k="output">Выход. буфер</th>
+          <th data-k="power">Питание, МВт</th>
+          <th>Управление</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <!-- ============ ВКЛАДКА: КАЛЬКУЛЯТОР ============ -->
+  <section id="tab-calc" class="hidden">
+    <h2>🧮 Калькулятор производства</h2>
+    <div class="advice" style="padding:16px 18px">
+      <div class="toolbar">
+        <button id="calcModeA" class="tab active">У меня есть сырьё</button>
+        <button id="calcModeB" class="tab">Мне нужен продукт</button>
+      </div>
+      <div class="toolbar">
+        <input type="text" id="calcSearch" placeholder="Найдите рецепт или предмет — например: катериевый слиток" style="width:min(420px,90%)">
+      </div>
+      <div id="calcMatches"></div>
+      <div id="calcBody"><p class="hint" style="color:var(--muted)">Выберите режим, найдите рецепт и укажите число — панель посчитает станки, недогрузку последнего, сырьё и электричество.</p></div>
+    </div>
+  </section>
+
+  <footer>Данные: FicsIt Remote Monitoring · <span id="apiUrlShow"></span> · обновление каждые 5 сек</footer>
+</main>
+
+<div id="modalBack"></div>
+<div id="itemModal"></div>
+<div id="genModal"></div>
+
+<script>
+"use strict";
+// API игры берём с того же компьютера, с которого открыта панель, —
+// так панель работает и по сети с других устройств.
+// Порт веб-сервера мода настраивается в ⚙ (по умолчанию у мода 8080).
+const API_PORT = localStorage.getItem("frm_apiPort") || "8080";
+const API = localStorage.getItem("frm_api") ||
+  "http://" + (location.hostname || "localhost") + ":" + API_PORT;
+// токен авторизации мода для команд управления — вводится в ⚙ настройках панели
+// (в игре: Настройки → Моды → FicsIt Remote Monitoring → Authentication Token)
+let FRM_TOKEN = localStorage.getItem("frm_token") || "";
+document.getElementById("apiUrlShow").textContent = API;
+
+// панель должна открываться через http://, иначе браузер не запоминает разрешение на уведомления
+if (location.protocol === "file:") {
+  const w = document.createElement("div");
+  w.className = "err";
+  w.style.display = "block";
+  w.innerHTML = '⚠ Панель открыта как файл — уведомления работать не будут. ' +
+    'Откройте её по адресу <a href="http://localhost:8086/dashboard.html" style="color:var(--orange)">http://localhost:8086/dashboard.html</a> ' +
+    '(если не открывается — запустите «запустить-панель.bat»).';
+  document.querySelector("main").prepend(w);
+}
+
+const REFRESH_MS = 5000;
+const EPS = 0.05;
+
+const fmt = n => {
+  if (n === null || n === undefined || isNaN(n)) return "—";
+  const abs = Math.abs(n);
+  const d = abs >= 100 ? 0 : abs >= 10 ? 1 : 2;
+  return n.toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: d });
+};
+const fmtSigned = n => (n > EPS ? "+" : "") + fmt(n);
+
+// ---------- вкладки ----------
+document.querySelectorAll(".tab[data-tab]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab[data-tab]").forEach(b => b.classList.toggle("active", b === btn));
+    document.querySelectorAll("main > section").forEach(s =>
+      s.classList.toggle("hidden", s.id !== "tab-" + btn.dataset.tab));
+  });
+});
+
+// ---------- состояние ----------
+let items = [];
+let sortKey = "balance", sortAsc = true;
+const powerHistory = []; // {t, prod, cons}
+let rawMachines = [];    // сырые данные getFactory + getExtractor (для деталей предмета)
+let worldInvData = [];   // getWorldInv
+const prodHist = {};     // ClassName → [{t, p, c}] — история производства за сессию
+let openItemCls = null;  // предмет, открытый в модальном окне
+let fuelWarnings = [];   // предупреждения о топливе (заполняет renderPower, показывает checkAlerts)
+
+// ---------- сглаживание (значения мода — мгновенные и слегка «дрожат») ----------
+const ema = {};
+function smoothItem(it) {
+  const a = 0.35;
+  const e = ema[it.ClassName] || (ema[it.ClassName] = { prod: it.CurrentProd, cons: it.CurrentConsumed });
+  e.prod += a * (it.CurrentProd - e.prod);
+  e.cons += a * (it.CurrentConsumed - e.cons);
+  return e;
+}
+// порог, ниже которого разница произв./потребл. считается шумом
+const noiseEps = it => Math.max(0.5, it.SCons * 0.03);
+
+// ---------- классификация предметов ----------
+function classify(it) {
+  const prod = it.SProd, cons = it.SCons;
+  const maxProd = it.MaxProd, maxCons = it.MaxConsumed;
+  if (prod < EPS && cons < EPS && maxProd < EPS && maxCons < EPS) return "idle";
+  if (cons > EPS && maxProd < EPS) return "noprod";
+  // дефицит — только если нехватка ЗНАЧИМАЯ (больше шума измерений)
+  if (cons - prod > noiseEps(it)) return "deficit";
+  // производство на 100% и потребляется почти всё — запаса нет
+  if (it.ProdPercent >= 99.5 && cons > EPS && prod - cons < prod * 0.05) return "limit";
+  // мощностей заметно больше, чем нужно: станки сами сбросили темп (выходы забиты)
+  if (cons > EPS && it.ProdPercent < 90 && maxProd >= Math.max(maxCons, cons) * 1.5) return "surplus";
+  if (prod < EPS && cons < EPS) return "idle";
+  return "ok";
+}
+const STATUS_META = {
+  deficit: { order: 0, label: "ДЕФИЦИТ",       cls: "b-deficit" },
+  noprod:  { order: 1, label: "НЕ ПРОИЗВОДИТСЯ", cls: "b-noprod" },
+  limit:   { order: 2, label: "НА ПРЕДЕЛЕ",     cls: "b-limit" },
+  ok:      { order: 3, label: "ОК",             cls: "b-ok" },
+  surplus: { order: 4, label: "ИЗБЫТОК",        cls: "b-surplus" },
+  idle:    { order: 5, label: "ПРОСТОЙ",        cls: "b-idle" },
+};
+
+// ---------- загрузка ----------
+async function getJSON(path) {
+  const r = await fetch(API + path, { cache: "no-store" });
+  if (!r.ok) throw new Error(path + " → HTTP " + r.status);
+  return r.json();
+}
+
+// ---------- данные: WebSocket с откатом на опрос ----------
+const ENDPOINTS = ["getProdStats", "getPower", "getGenerators", "getWorldInv", "getFactory", "getExtractor", "getSessionInfo"];
+const cache = {};                // endpoint → последние данные
+let wsAlive = false, wsLastMsg = 0, pollTimer = null, renderQueued = false;
+
+function setOnline(ok, live) {
+  const dot = document.getElementById("connDot");
+  const txt = document.getElementById("connText");
+  dot.classList.toggle("ok", ok);
+  txt.textContent = ok ? (live ? "онлайн · live" : "онлайн") : "нет связи";
+  if (ok) {
+    document.getElementById("lastUpdate").textContent =
+      "· " + new Date().toLocaleTimeString("ru-RU");
+    document.getElementById("errBox").style.display = "none";
+  }
+}
+
+function connectWS() {
+  let sock;
+  try { sock = new WebSocket("ws://" + (location.hostname || "localhost") + ":" + API_PORT + "/"); }
+  catch (e) { startPolling(); return; }
+  const dead = setTimeout(() => { try { sock.close(); } catch (e) {} }, 8000);
+  sock.onopen = () => {
+    clearTimeout(dead);
+    wsAlive = true; wsLastMsg = Date.now();
+    stopPolling();
+    sock.send(JSON.stringify({ action: "subscribe", endpoints: ENDPOINTS }));
+  };
+  sock.onmessage = ev => {
+    try {
+      const m = JSON.parse(ev.data);
+      if (m && m.endpoint) {
+        cache[m.endpoint] = m.data;
+        wsLastMsg = Date.now();
+        queueRender(true);
+      }
+    } catch (e) {}
+  };
+  sock.onerror = () => { try { sock.close(); } catch (e) {} };
+  sock.onclose = () => {
+    clearTimeout(dead);
+    if (wsAlive) { wsAlive = false; startPolling(); }
+    else if (!pollTimer) startPolling();
+    setTimeout(connectWS, 15000); // пробуем вернуться на live
+  };
+}
+// сторож: если live-поток замолчал на 30+ сек — переходим на опрос
+setInterval(() => {
+  if (wsAlive && Date.now() - wsLastMsg > 30000) { wsAlive = false; startPolling(); }
+}, 10000);
+
+function queueRender(live) {
+  if (renderQueued) return;
+  renderQueued = true;
+  setTimeout(() => {
+    renderQueued = false;
+    try { applyData(); setOnline(true, live); } catch (e) {}
+  }, 200); // подкопить сообщения одного цикла и отрисовать разом
+}
+
+function startPolling() {
+  if (pollTimer) return;
+  refresh();
+  pollTimer = setInterval(refresh, REFRESH_MS);
+}
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+async function refresh() {
+  const errBox = document.getElementById("errBox");
+  try {
+    const results = await Promise.all(ENDPOINTS.map(ep =>
+      getJSON("/" + ep).catch(() => null)));
+    ENDPOINTS.forEach((ep, i) => { if (results[i] !== null) cache[ep] = results[i]; });
+    if (!cache.getProdStats || !cache.getPower) throw new Error("нет ответа от основных эндпоинтов");
+    applyData();
+    setOnline(true, false);
+  } catch (e) {
+    setOnline(false);
+    errBox.style.display = "block";
+    errBox.innerHTML = "Не удалось получить данные с <b>" + API + "</b> — " + e.message +
+      "<br>Проверьте, что игра запущена и веб-сервер мода включён (команда <code>/frm http start</code> или авто-запуск в настройках мода).";
+  }
+}
+
+function applyData() {
+  if (!cache.getProdStats || !cache.getPower) return;
+  const prod = cache.getProdStats, power = cache.getPower;
+  const gens = cache.getGenerators || [];
+  const worldInv = cache.getWorldInv || [];
+  const factory = cache.getFactory || [];
+  const extractors = cache.getExtractor || [];
+  const session = cache.getSessionInfo || null;
+  {
+    items = prod.map(it => {
+      const s = smoothItem(it);
+      const rec = {
+        ...it,
+        SProd: s.prod, SCons: s.cons,
+        balance: s.prod - s.cons,
+        maxBalance: it.MaxProd - it.MaxConsumed,
+      };
+      rec.status = classify(rec);
+      return rec;
+    });
+    rawMachines = [...factory, ...extractors];
+    worldInvData = worldInv;
+    items.forEach(it => {
+      const h = prodHist[it.ClassName] || (prodHist[it.ClassName] = []);
+      if (h.length && Date.now() - h[h.length - 1].t < 4500) return; // не чаще раза в ~5 сек
+      h.push({ t: Date.now(), p: it.CurrentProd, c: it.CurrentConsumed });
+      if (h.length > 720) h.shift();
+    });
+    renderProd();
+    renderPower(power, gens);
+    renderStorage(worldInv);
+    renderMachines(rawMachines);
+    checkAlerts(power);
+    renderGameTime(session);
+    if (openItemCls) renderItemModal(openItemCls);
+  }
+}
+
+// ---------- ПРОИЗВОДСТВО ----------
+function renderProd() {
+  const active = items.filter(i => i.status !== "idle");
+  const deficits = items.filter(i => i.status === "deficit" || i.status === "noprod");
+  const limits = items.filter(i => i.status === "limit");
+  const surpluses = items.filter(i => i.status === "surplus");
+  const futureDeficits = items.filter(i =>
+    i.status === "ok" && i.MaxConsumed > i.MaxProd + EPS && i.CurrentConsumed > EPS);
+
+  document.getElementById("prodCards").innerHTML = `
+    <div class="card blue"><div class="label">Активных предметов</div><div class="value">${active.length}</div><div class="sub">из ${items.length} всего</div></div>
+    <div class="card ${deficits.length ? "red" : "green"}"><div class="label">В дефиците</div><div class="value">${deficits.length}</div><div class="sub">потребление выше производства</div></div>
+    <div class="card ${limits.length ? "yellow" : "green"}"><div class="label">На пределе</div><div class="value">${limits.length}</div><div class="sub">производство на 100%, запаса нет</div></div>
+    <div class="card ${futureDeficits.length ? "yellow" : "green"}"><div class="label">Риск дефицита</div><div class="value">${futureDeficits.length}</div><div class="sub">не хватит при полной загрузке</div></div>
+    <div class="card ${surpluses.length ? "blue" : "green"}"><div class="label">Избыток мощности</div><div class="value">${surpluses.length}</div><div class="sub">станки работают вполсилы — есть резерв</div></div>
+  `;
+
+  renderAdvice(deficits, limits, futureDeficits, surpluses);
+  renderTable();
+}
+
+function renderAdvice(deficits, limits, futureDeficits, surpluses) {
+  const box = document.getElementById("adviceBox");
+  const rows = [];
+
+  deficits
+    .sort((a, b) => a.balance - b.balance)
+    .forEach(it => {
+      const need = it.CurrentConsumed - it.CurrentProd;
+      if (it.MaxProd < EPS) {
+        rows.push(`<li>🚨 <span class="item-name">${it.Name}</span>: потребляется <b>${fmt(it.CurrentConsumed)}/мин</b>, но производства нет вообще. <span class="hint">Постройте линию производства или наладьте добычу (${fmt(it.MaxConsumed)}/мин нужно при полной загрузке).</span></li>`);
+      } else {
+        const machines = it.MaxProd > 0 ? Math.ceil(need / it.MaxProd * getMachineEstimate(it)) : 0;
+        rows.push(`<li>🔴 <span class="item-name">${it.Name}</span>: дефицит <b class="neg">${fmt(need)}/мин</b> (произв. ${fmt(it.CurrentProd)}, потребл. ${fmt(it.CurrentConsumed)}). <span class="hint">${it.ProdPercent >= 99 ? "Производство уже на 100% — добавьте станки (+" + Math.ceil(need / it.MaxProd * 100) + "% мощности) или проверьте подвоз сырья." : "Станки загружены на " + fmt(it.ProdPercent) + "% — вероятно, не хватает сырья или конвейер не успевает."}</span></li>`);
+      }
+    });
+
+  limits.forEach(it => {
+    rows.push(`<li>🟡 <span class="item-name">${it.Name}</span>: производство на пределе (${fmt(it.CurrentProd)}/мин из ${fmt(it.MaxProd)} макс). <span class="hint">Пока хватает, но любое новое потребление создаст дефицит. Запланируйте расширение.</span></li>`);
+  });
+
+  futureDeficits.forEach(it => {
+    rows.push(`<li>🟠 <span class="item-name">${it.Name}</span>: при полной загрузке потребителей нужно <b>${fmt(it.MaxConsumed)}/мин</b>, а максимум производства — <b>${fmt(it.MaxProd)}/мин</b>. <span class="hint">Сейчас работает, потому что потребители простаивают.</span></li>`);
+  });
+
+  surpluses.forEach(it => {
+    rows.push(`<li>🔵 <span class="item-name">${it.Name}</span>: мощности хватает с запасом — макс. производство <b>${fmt(it.MaxProd)}/мин</b> при спросе <b>${fmt(it.SCons)}/мин</b>, станки работают на ${fmt(it.ProdPercent)}%. <span class="hint">Это не проблема: выходы забиты, и станки сами сбросили темп под спрос. Свободный резерв ${fmt(it.MaxProd - it.SCons)}/мин можно направить на новое производство.</span></li>`);
+  });
+
+  box.innerHTML = rows.length
+    ? "<ul>" + rows.join("") + "</ul>"
+    : "<p style='color:var(--green);margin:10px 0'>✅ Дефицитов нет — фабрика сбалансирована. Можно расширяться!</p>";
+}
+
+function getMachineEstimate() { return 1; } // без данных о станках даём оценку в % мощности
+
+function renderTable() {
+  const q = document.getElementById("search").value.toLowerCase().trim();
+  const sf = document.getElementById("statusFilter").value;
+  const hideIdle = document.getElementById("hideIdle").checked;
+
+  let rows = items.filter(it => {
+    if (q && !it.Name.toLowerCase().includes(q)) return false;
+    if (sf !== "all") {
+      if (sf === "deficit" && it.status !== "deficit" && it.status !== "noprod") return false;
+      else if (sf !== "deficit" && it.status !== sf) return false;
+    }
+    if (hideIdle && it.status === "idle" && !q) return false;
+    return true;
+  });
+
+  rows.sort((a, b) => {
+    let va, vb;
+    if (sortKey === "Name") { va = a.Name; vb = b.Name; }
+    else if (sortKey === "status") { va = STATUS_META[a.status].order; vb = STATUS_META[b.status].order; }
+    else { va = a[sortKey]; vb = b[sortKey]; }
+    const c = typeof va === "string" ? va.localeCompare(vb, "ru") : va - vb;
+    return sortAsc ? c : -c;
+  });
+
+  const tbody = document.querySelector("#prodTable tbody");
+  tbody.innerHTML = rows.map(it => {
+    const m = STATUS_META[it.status];
+    const ne = noiseEps(it);
+    const balCls = it.balance > ne ? "pos" : it.balance < -ne ? "neg" : "zero";
+    const mbCls = it.maxBalance > EPS ? "pos" : it.maxBalance < -EPS ? "neg" : "zero";
+    const pct = Math.min(100, it.ProdPercent);
+    const barColor = pct >= 99.5 ? "var(--yellow)" : pct > 0 ? "var(--green)" : "var(--border)";
+    return `<tr data-cls="${it.ClassName}" title="Нажмите, чтобы увидеть детали">
+      <td>${it.Name}</td>
+      <td><span class="badge ${m.cls}">${m.label}</span></td>
+      <td class="num">${fmt(it.CurrentProd)}</td>
+      <td class="num zero">${fmt(it.MaxProd)}</td>
+      <td class="num">${fmt(it.CurrentConsumed)}</td>
+      <td class="num zero">${fmt(it.MaxConsumed)}</td>
+      <td class="num ${balCls}">${fmtSigned(it.balance)}</td>
+      <td class="num ${mbCls}">${fmtSigned(it.maxBalance)}</td>
+      <td class="num">${fmt(it.ProdPercent)}%<span class="bar"><i style="width:${pct}%;background:${barColor}"></i></span></td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="9" style="text-align:center;color:var(--muted)">Ничего не найдено</td></tr>`;
+}
+
+document.querySelectorAll("#prodTable th").forEach(th => {
+  th.addEventListener("click", () => {
+    const k = th.dataset.k;
+    if (sortKey === k) sortAsc = !sortAsc;
+    else { sortKey = k; sortAsc = k === "Name" || k === "status" || k === "balance"; }
+    renderTable();
+  });
+});
+["search", "statusFilter", "hideIdle"].forEach(id =>
+  document.getElementById(id).addEventListener("input", renderTable));
+
+// ---------- ДЕТАЛИ ПРЕДМЕТА (модальное окно) ----------
+const modalBack = document.getElementById("modalBack");
+const itemModal = document.getElementById("itemModal");
+
+document.querySelector("#prodTable tbody").addEventListener("click", e => {
+  const tr = e.target.closest("tr[data-cls]");
+  if (tr) openItem(tr.dataset.cls);
+});
+let modalRange = "session"; // сессия | 24 | 168 (часов)
+function openItem(cls) {
+  openItemCls = cls;
+  modalBack.style.display = "block";
+  itemModal.style.display = "block";
+  renderItemModal(cls);
+}
+itemModal.addEventListener("click", e => {
+  const b = e.target.closest("button[data-range]");
+  if (b) { modalRange = b.dataset.range; renderItemModal(openItemCls); }
+});
+function closeItem() {
+  openItemCls = null;
+  modalBack.style.display = "none";
+  itemModal.style.display = "none";
+}
+modalBack.addEventListener("click", () => { closeItem(); closeGenDial(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") { closeItem(); closeGenDial(); } });
+
+// станки, производящие/потребляющие предмет, сгруппированные по типу и рецепту
+function groupUsers(cls, field, curKey, maxKey) {
+  const g = {};
+  rawMachines.forEach(m => {
+    (m[field] || []).forEach(x => {
+      if (x.ClassName !== cls) return;
+      const k = m.Name + "|" + (m.Recipe || "");
+      const e = g[k] || (g[k] = { name: m.Name, recipe: m.Recipe || "", n: 0, cur: 0, max: 0, paused: 0 });
+      e.n++;
+      e.cur += x[curKey] || 0;
+      e.max += x[maxKey] || 0;
+      if (m.IsPaused) e.paused++;
+    });
+  });
+  return Object.values(g).sort((a, b) => b.cur - a.cur);
+}
+
+function userListHTML(rows, other, otherLabel, color) {
+  const all = [...rows];
+  if (other > 0.5) all.push({ name: otherLabel, recipe: "", n: 0, cur: other, max: other, paused: 0 });
+  if (!all.length) return '<div class="urow" style="color:var(--muted)">— никто —</div>';
+  const top = Math.max(...all.map(r => r.cur), ...all.map(r => r.max), 0.001);
+  return all.map(r => `
+    <div class="urow">
+      <div class="utitle">
+        <span>${r.name}${r.n ? " ×" + r.n : ""}${r.paused ? ' <span class="badge b-limit">' + r.paused + " на паузе</span>" : ""}</span>
+        <span class="num"><b>${fmt(r.cur)}</b><span class="zero"> / ${fmt(r.max)} в мин</span></span>
+      </div>
+      ${r.recipe ? `<div class="urecipe">рецепт: ${r.recipe}</div>` : ""}
+      <div class="hbar"><i style="width:${Math.min(100, r.cur / top * 100)}%;background:${color}"></i></div>
+    </div>`).join("");
+}
+
+// универсальный график: series = [{pts: [{t, v}], color, label}]
+function drawLines(cv, series) {
+  const ctx = cv.getContext("2d");
+  const W = cv.width, H = cv.height;
+  ctx.clearRect(0, 0, W, H);
+  const allPts = series.flatMap(s => s.pts);
+  if (allPts.length < 3) {
+    ctx.fillStyle = "#9a9fa8"; ctx.font = "13px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("График появится через несколько секунд…", W / 2, H / 2);
+    return;
+  }
+  const t0 = Math.min(...allPts.map(p => p.t)), t1 = Math.max(...allPts.map(p => p.t));
+  const maxV = Math.max(...allPts.map(p => p.v)) * 1.15 || 1;
+  const x = t => 42 + (W - 52) * (t - t0) / Math.max(1, t1 - t0);
+  const y = v => H - 18 - (H - 34) * v / maxV;
+  ctx.strokeStyle = "#32363e"; ctx.fillStyle = "#9a9fa8"; ctx.font = "10px sans-serif"; ctx.textAlign = "left";
+  for (let g = 0; g <= 4; g++) {
+    const v = maxV * g / 4, yy = y(v);
+    ctx.beginPath(); ctx.moveTo(42, yy); ctx.lineTo(W - 10, yy); ctx.stroke();
+    ctx.fillText(fmt(v), 2, yy + 3);
+  }
+
+  // ось времени: метки, а для диапазонов больше суток — ещё и дата
+  const span = t1 - t0;
+  const longRange = span > 26 * 3600e3;
+  const tickFmt = t => {
+    const d = new Date(t);
+    const hm = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+    return longRange
+      ? d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" }) + " " + hm
+      : hm;
+  };
+  for (let i = 0; i <= 4; i++) {
+    const t = t0 + span * i / 4, xx = x(t);
+    ctx.strokeStyle = "#282c33";
+    ctx.beginPath(); ctx.moveTo(xx, 16); ctx.lineTo(xx, H - 16); ctx.stroke();
+    ctx.fillStyle = "#9a9fa8";
+    ctx.textAlign = i === 0 ? "left" : i === 4 ? "right" : "center";
+    ctx.fillText(tickFmt(t), xx, H - 4);
+  }
+  // разделители суток (полночь) с датой
+  if (longRange) {
+    const mid = new Date(t0);
+    mid.setHours(24, 0, 0, 0);
+    ctx.setLineDash([5, 4]);
+    for (let t = mid.getTime(); t < t1; t += 24 * 3600e3) {
+      const xx = x(t);
+      ctx.strokeStyle = "#5a4a33";
+      ctx.beginPath(); ctx.moveTo(xx, 16); ctx.lineTo(xx, H - 16); ctx.stroke();
+      ctx.fillStyle = "#fa9549";
+      ctx.textAlign = "left";
+      ctx.fillText(new Date(t).toLocaleDateString("ru-RU", { weekday: "short", day: "2-digit", month: "2-digit" }), xx + 4, 26);
+    }
+    ctx.setLineDash([]);
+  }
+  ctx.textAlign = "left";
+
+  series.forEach(s => {
+    if (s.pts.length < 2) return;
+    ctx.strokeStyle = s.color; ctx.lineWidth = 2; ctx.beginPath();
+    s.pts.forEach((p, i) => i ? ctx.lineTo(x(p.t), y(p.v)) : ctx.moveTo(x(p.t), y(p.v)));
+    ctx.stroke();
+  });
+  let lx = W - 12 - series.reduce((s, x2) => s + ctx.measureText("— " + x2.label).width + 18, 0);
+  series.forEach(s => {
+    ctx.fillStyle = s.color;
+    ctx.fillText("— " + s.label, lx, 12);
+    lx += ctx.measureText("— " + s.label).width + 18;
+  });
+}
+
+function renderItemModal(cls) {
+  const it = items.find(i => i.ClassName === cls);
+  if (!it) { closeItem(); return; }
+  const m = STATUS_META[it.status];
+  const stock = worldInvData.find(w => w.ClassName === cls);
+  const stockRate = stock ? stockTrend(cls, stock.Amount) : null;
+
+  const producers = groupUsers(cls, "production", "CurrentProd", "MaxProd");
+  const consumers = groupUsers(cls, "ingredients", "CurrentConsumed", "MaxConsumed");
+  const otherProd = it.CurrentProd - producers.reduce((s, r) => s + r.cur, 0);
+  const otherCons = it.CurrentConsumed - consumers.reduce((s, r) => s + r.cur, 0);
+
+  // прогноз по складу с учётом баланса
+  let stockLine = "";
+  if (stock) {
+    let f = "";
+    if (stockRate !== null && stockRate < -0.05)
+      f = ` · <span class="neg">закончится через ~${Math.round(stock.Amount / -stockRate)} мин</span>`;
+    else if (stockRate !== null && stockRate > 0.05)
+      f = ' · <span class="pos">пополняется</span>';
+    stockLine = `<div class="card blue"><div class="label">На складах</div><div class="value">${fmt(stock.Amount)} шт</div><div class="sub">${stockRate === null ? "тренд считается…" : fmtSigned(stockRate) + " шт/мин"}${f}</div></div>`;
+  }
+
+  const advice = {
+    deficit: "🔴 Потребление превышает производство — стройте ещё станков или проверьте подвоз сырья.",
+    noprod: "🚨 Предмет потребляется, но не производится вообще!",
+    limit: "🟡 Производство на пределе — при росте потребления возникнет дефицит.",
+    surplus: "🔵 Мощностей с запасом: станки сами сбросили темп под спрос. Резерв можно пустить в дело.",
+    ok: "🟢 Баланс в норме.",
+    idle: "⚪ Предмет сейчас не участвует в производстве.",
+  }[it.status];
+
+  itemModal.innerHTML = `
+    <div class="mhead">
+      <h1>${it.Name}</h1>
+      <span class="badge ${m.cls}">${m.label}</span>
+      <button class="mclose" onclick="closeItem()">✕</button>
+    </div>
+    <p style="margin:0 0 12px;color:var(--muted)">${advice}</p>
+    <div class="cards">
+      <div class="card orange"><div class="label">Производство</div><div class="value">${fmt(it.CurrentProd)}</div><div class="sub">из ${fmt(it.MaxProd)} макс/мин · загрузка ${fmt(it.ProdPercent)}%</div></div>
+      <div class="card blue"><div class="label">Потребление</div><div class="value">${fmt(it.CurrentConsumed)}</div><div class="sub">из ${fmt(it.MaxConsumed)} макс/мин</div></div>
+      <div class="card ${it.balance < -0.5 ? "red" : it.balance > 0.5 ? "green" : "yellow"}"><div class="label">Баланс</div><div class="value">${fmtSigned(it.balance)}</div><div class="sub">шт/мин · при 100%: ${fmtSigned(it.maxBalance)}</div></div>
+      ${stockLine}
+    </div>
+    <h2>📈 Производство и потребление ${rangeBtnsHTML(modalRange)}</h2>
+    <canvas id="mChartFlow" width="860" height="170"></canvas>
+    ${stock ? '<h2>📦 Запас на складах</h2><canvas id="mChartStock" width="860" height="150"></canvas>' : ""}
+    <div class="twocol" style="margin-top:18px">
+      <div>
+        <h2 style="margin-top:0">⚙ Производят</h2>
+        <div class="userlist">${userListHTML(producers, otherProd, "Прочее (генераторы, ручной крафт)", "var(--orange)")}</div>
+      </div>
+      <div>
+        <h2 style="margin-top:0">🔩 Потребляют</h2>
+        <div class="userlist">${userListHTML(consumers, otherCons, "Прочее (генераторы, топливо)", "var(--blue)")}</div>
+      </div>
+    </div>`;
+
+  if (modalRange === "session") {
+    const h = prodHist[cls] || [];
+    drawLines(document.getElementById("mChartFlow"), [
+      { pts: h.map(p => ({ t: p.t, v: p.p })), color: "#fa9549", label: "производство" },
+      { pts: h.map(p => ({ t: p.t, v: p.c })), color: "#64b5f6", label: "потребление" },
+    ]);
+    if (stock) {
+      const sh = (stockHist[cls] || []).filter(p => Date.now() - p.t <= 2 * 3600000);
+      drawLines(document.getElementById("mChartStock"), [
+        { pts: sh.map(p => ({ t: p.t, v: p.a })), color: "#4caf50", label: "на складе, шт" },
+      ]);
+    }
+  } else {
+    // долгая история из IndexedDB (пишется раз в минуту, пока панель открыта)
+    getHistRange("i:" + cls, +modalRange).then(rows => {
+      if (openItemCls !== cls || modalRange === "session") return;
+      const fcv = document.getElementById("mChartFlow");
+      if (fcv) drawLines(fcv, [
+        { pts: rows.map(r => ({ t: r.t, v: r.p })), color: "#fa9549", label: "производство" },
+        { pts: rows.map(r => ({ t: r.t, v: r.c })), color: "#64b5f6", label: "потребление" },
+      ]);
+      const scv = document.getElementById("mChartStock");
+      if (scv) drawLines(scv, [
+        { pts: rows.filter(r => r.a !== null).map(r => ({ t: r.t, v: r.a })), color: "#4caf50", label: "на складе, шт" },
+      ]);
+    });
+  }
+}
+
+// ---------- СКЛАДЫ ----------
+const HIST_KEY = "frm_stockHist";
+const HIST_STEP_MS = 20000;   // точка не чаще, чем раз в 20 сек
+const HIST_MAX = 360;         // ~2 часа истории на предмет
+let stockHist = {};
+try { stockHist = JSON.parse(localStorage.getItem(HIST_KEY)) || {}; } catch (e) { stockHist = {}; }
+let stockItems = [];
+let stSortKey = "rate", stSortAsc = true;
+
+function updateStockHist(inv) {
+  const now = Date.now();
+  inv.forEach(it => {
+    const h = stockHist[it.ClassName] || (stockHist[it.ClassName] = []);
+    if (!h.length || now - h[h.length - 1].t >= HIST_STEP_MS) {
+      h.push({ t: now, a: it.Amount });
+      if (h.length > HIST_MAX) h.splice(0, h.length - HIST_MAX);
+    }
+  });
+  try { localStorage.setItem(HIST_KEY, JSON.stringify(stockHist)); } catch (e) {}
+}
+
+// тренд: изменение за последние 10 минут (мин. 2 минуты данных)
+function stockTrend(cls, current) {
+  const h = stockHist[cls] || [];
+  const now = Date.now();
+  const win = h.filter(p => now - p.t <= 10 * 60000);
+  if (win.length < 3 || now - win[0].t < 2 * 60000) return null;
+  const dtMin = (now - win[0].t) / 60000;
+  return (current - win[0].a) / dtMin;
+}
+
+function renderStorage(inv) {
+  updateStockHist(inv);
+  stockItems = inv.map(it => {
+    const rate = stockTrend(it.ClassName, it.Amount);
+    let eta = null; // минут до нуля (если тает)
+    if (rate !== null && rate < -0.05 && it.Amount > 0) eta = it.Amount / -rate;
+    return { ...it, rate, eta };
+  });
+
+  const falling = stockItems.filter(i => i.rate !== null && i.rate < -0.05);
+  const rising = stockItems.filter(i => i.rate !== null && i.rate > 0.05);
+  const soon = falling.filter(i => i.eta !== null && i.eta < 30);
+  const total = stockItems.reduce((s, i) => s + i.Amount, 0);
+
+  document.getElementById("storageCards").innerHTML = `
+    <div class="card blue"><div class="label">Видов предметов</div><div class="value">${stockItems.length}</div><div class="sub">${fmt(total)} шт всего на складах</div></div>
+    <div class="card ${soon.length ? "red" : "green"}"><div class="label">Скоро закончатся</div><div class="value">${soon.length}</div><div class="sub">запас растает за 30 минут</div></div>
+    <div class="card ${falling.length ? "yellow" : "green"}"><div class="label">Запас тает ↘</div><div class="value">${falling.length}</div><div class="sub">расход выше пополнения</div></div>
+    <div class="card green"><div class="label">Запас растёт ↗</div><div class="value">${rising.length}</div><div class="sub">производство с избытком</div></div>
+  `;
+  renderStorageTable();
+}
+
+function sparkline(cls) {
+  const h = stockHist[cls] || [];
+  const now = Date.now();
+  const win = h.filter(p => now - p.t <= 10 * 60000);
+  if (win.length < 2) return '<span class="zero" style="font-size:11px">накапливаю…</span>';
+  const min = Math.min(...win.map(p => p.a)), max = Math.max(...win.map(p => p.a));
+  const range = max - min || 1;
+  const W = 90, H = 22;
+  const pts = win.map((p, i) =>
+    (i * W / (win.length - 1)).toFixed(1) + "," + (H - 2 - (p.a - min) / range * (H - 4)).toFixed(1)
+  ).join(" ");
+  const color = win[win.length - 1].a < win[0].a ? "var(--red)" : "var(--green)";
+  return `<svg width="${W}" height="${H}" style="vertical-align:middle"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5"/></svg>`;
+}
+
+function renderStorageTable() {
+  const q = document.getElementById("stSearch").value.toLowerCase().trim();
+  const f = document.getElementById("stFilter").value;
+  let rows = stockItems.filter(it => {
+    if (q && !it.Name.toLowerCase().includes(q)) return false;
+    if (f === "falling") return it.rate !== null && it.rate < -0.05;
+    if (f === "rising") return it.rate !== null && it.rate > 0.05;
+    return true;
+  });
+  rows.sort((a, b) => {
+    let va, vb;
+    if (stSortKey === "Name") { va = a.Name; vb = b.Name; }
+    else if (stSortKey === "eta") { va = a.eta ?? Infinity; vb = b.eta ?? Infinity; }
+    else if (stSortKey === "rate") { va = a.rate ?? Infinity; vb = b.rate ?? Infinity; }
+    else { va = a[stSortKey]; vb = b[stSortKey]; }
+    const c = typeof va === "string" ? va.localeCompare(vb, "ru") : va - vb;
+    return stSortAsc ? c : -c;
+  });
+  document.querySelector("#stTable tbody").innerHTML = rows.map(it => {
+    const r = it.rate;
+    const trend = r === null ? '<span class="zero">—</span>'
+      : r < -0.05 ? `<span class="neg">↘ ${fmt(r)}</span>`
+      : r > 0.05 ? `<span class="pos">↗ +${fmt(r)}</span>`
+      : '<span class="zero">→ 0</span>';
+    let forecast = '<span class="zero">стабильно</span>';
+    if (it.eta !== null) {
+      const m = Math.round(it.eta);
+      forecast = m < 30
+        ? `<span class="neg">закончится через ~${m} мин!</span>`
+        : `<span style="color:var(--yellow)">закончится через ~${m > 120 ? Math.round(m / 60) + " ч" : m + " мин"}</span>`;
+    } else if (r !== null && r > 0.05) forecast = '<span class="pos">пополняется</span>';
+    return `<tr>
+      <td>${it.Name}</td>
+      <td class="num">${fmt(it.Amount)}</td>
+      <td class="num">${trend}</td>
+      <td>${forecast}</td>
+      <td>${sparkline(it.ClassName)}</td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="5" style="text-align:center;color:var(--muted)">Ничего не найдено</td></tr>`;
+}
+
+document.querySelectorAll("#stTable th[data-k]").forEach(th => {
+  th.addEventListener("click", () => {
+    const k = th.dataset.k;
+    if (stSortKey === k) stSortAsc = !stSortAsc;
+    else { stSortKey = k; stSortAsc = k !== "Amount"; }
+    renderStorageTable();
+  });
+});
+["stSearch", "stFilter"].forEach(id =>
+  document.getElementById(id).addEventListener("input", renderStorageTable));
+
+// ---------- СТАНКИ ----------
+let machines = [];
+let mSortKey = "status", mSortAsc = true;
+
+// диагностика одного станка → {code, label, cls, hint, severity}
+function diagnoseMachine(m) {
+  const load = m.Productivity !== undefined ? m.Productivity : (m.production?.[0]?.ProdPercent ?? 0);
+  const outFull = (m.production || []).some(p => p.MaxAmount > 0 && p.Amount >= p.MaxAmount * 0.95);
+  const inEmpty = (m.InputInventory !== undefined)
+    ? !(m.InputInventory || []).some(i => i.Amount > 0)
+    : false;
+  if (m.IsPaused) return { s: 1, label: "НА ПАУЗЕ", cls: "b-limit", hint: "станок выключен вручную" };
+  if (m.PowerInfo?.FuseTriggered) return { s: 0, label: "НЕТ ПИТАНИЯ", cls: "b-noprod", hint: "сработал предохранитель сети" };
+  if (m.IsConfigured === false) return { s: 0, label: "НЕТ РЕЦЕПТА", cls: "b-noprod", hint: "рецепт не задан" };
+  if (load < 5) {
+    if (outFull) return { s: 2, label: "ВЫХОД ЗАБИТ", cls: "b-surplus", hint: "продукцию не забирают — станок ждёт" };
+    if (inEmpty && m.ingredients) return { s: 0, label: "НЕТ СЫРЬЯ", cls: "b-deficit", hint: "входной буфер пуст — проверьте конвейер" };
+    return { s: 1, label: "ПРОСТОЙ", cls: "b-idle", hint: "станок не работает" };
+  }
+  if (load < 95) {
+    // если сырья во входном буфере полно, станок тормозит не из-за подвоза, а из-за спроса
+    const inv = m.InputInventory || [];
+    const inFrac = inv.length
+      ? inv.reduce((s, i) => s + i.Amount, 0) / Math.max(1, inv.reduce((s, i) => s + i.MaxAmount, 0))
+      : null;
+    if (outFull || inFrac === null || inFrac > 0.2)
+      return { s: 3, label: "ПРИТОРМОЖЕН", cls: "b-surplus", hint: "спрос ниже мощности — выход подпирает, это нормально" };
+    return { s: 2, label: "НЕДОГРУЖЕН", cls: "b-limit", hint: "сырьё поступает с перебоями — конвейер не успевает" };
+  }
+  return { s: 4, label: "РАБОТАЕТ", cls: "b-ok", hint: "" };
+}
+
+function renderMachines(list) {
+  machines = list.map(m => {
+    const d = diagnoseMachine(m);
+    const load = m.Productivity !== undefined ? m.Productivity : (m.production?.[0]?.ProdPercent ?? 0);
+    const inv = arr => (arr || []).reduce((s, i) => s + i.Amount, 0);
+    return {
+      ID: m.ID,
+      Name: m.Name, Recipe: m.Recipe || "—",
+      status: d, load,
+      paused: !!m.IsPaused,
+      loc: m.location || null,
+      input: m.InputInventory !== undefined ? inv(m.InputInventory) : null,
+      output: inv(m.OutputInventory !== undefined ? m.OutputInventory : m.production),
+      power: m.PowerInfo?.PowerConsumed ?? 0,
+    };
+  });
+
+  const working = machines.filter(m => m.status.s === 4);
+  const problems = machines.filter(m => m.status.s <= 1);
+  const throttled = machines.filter(m => m.status.s === 2 || m.status.s === 3);
+
+  document.getElementById("mCards").innerHTML = `
+    <div class="card blue"><div class="label">Всего станков</div><div class="value">${machines.length}</div><div class="sub">включая буровые</div></div>
+    <div class="card green"><div class="label">Работают на 100%</div><div class="value">${working.length}</div></div>
+    <div class="card ${throttled.length ? "yellow" : "green"}"><div class="label">Работают не в полную силу</div><div class="value">${throttled.length}</div><div class="sub">недогружены или ждут спроса</div></div>
+    <div class="card ${problems.length ? "red" : "green"}"><div class="label">Стоят</div><div class="value">${problems.length}</div><div class="sub">нет сырья, питания или на паузе</div></div>
+  `;
+
+  // сводка проблем: группируем по рецепту и причине
+  const groups = {};
+  machines.filter(m => m.status.s <= 2 && m.status.label !== "ВЫХОД ЗАБИТ").forEach(m => {
+    const key = m.Name + "|" + m.Recipe + "|" + m.status.label;
+    (groups[key] = groups[key] || { m, n: 0 }).n++;
+  });
+  const lines = Object.values(groups)
+    .sort((a, b) => a.m.status.s - b.m.status.s)
+    .map(({ m, n }) =>
+      `<li>${m.status.s === 0 ? "🔴" : "🟡"} <span class="item-name">${m.Name}</span> (${m.Recipe}) ×${n} — <b>${m.status.label.toLowerCase()}</b>. <span class="hint">${m.status.hint}.</span></li>`);
+  document.getElementById("mProblems").innerHTML = lines.length
+    ? "<ul>" + lines.join("") + "</ul>"
+    : "<p style='color:var(--green);margin:10px 0'>✅ Все станки в норме: работают или осознанно придерживают темп.</p>";
+
+  renderMachinesTable();
+}
+
+function renderMachinesTable() {
+  const q = document.getElementById("mSearch").value.toLowerCase().trim();
+  const onlyP = document.getElementById("mOnlyProblems").checked;
+  let rows = machines.filter(m => {
+    if (q && !(m.Name + " " + m.Recipe).toLowerCase().includes(q)) return false;
+    if (onlyP && m.status.s >= 3) return false;
+    return true;
+  });
+  rows.sort((a, b) => {
+    let va, vb;
+    if (mSortKey === "status") { va = a.status.s; vb = b.status.s; }
+    else if (mSortKey === "Name" || mSortKey === "Recipe") { va = a[mSortKey]; vb = b[mSortKey]; }
+    else { va = a[mSortKey] ?? -1; vb = b[mSortKey] ?? -1; }
+    const c = typeof va === "string" ? va.localeCompare(vb, "ru") : va - vb;
+    return mSortAsc ? c : -c;
+  });
+  document.querySelector("#mTable tbody").innerHTML = rows.map(m => {
+    const pct = Math.min(100, m.load);
+    const barColor = m.status.s <= 1 ? "var(--red)" : m.status.s <= 3 ? "var(--yellow)" : "var(--green)";
+    return `<tr>
+      <td><input type="checkbox" class="mchk" data-id="${m.ID}" ${selectedMachines.has(m.ID) ? "checked" : ""}></td>
+      <td>${m.Name}</td>
+      <td>${m.Recipe}</td>
+      <td><span class="badge ${m.status.cls}" title="${m.status.hint}">${m.status.label}</span></td>
+      <td class="num">${fmt(m.load)}%<span class="bar"><i style="width:${pct}%;background:${barColor}"></i></span></td>
+      <td class="num">${m.input === null ? "—" : fmt(m.input)}</td>
+      <td class="num">${fmt(m.output)}</td>
+      <td class="num">${fmt(m.power)}</td>
+      <td>${m.paused
+        ? `<button class="btn-toggle off" data-id="${m.ID}" data-on="1">▶ включить</button>`
+        : `<button class="btn-toggle" data-id="${m.ID}" data-on="0">⏸ выключить</button>`}${m.loc
+        ? ` <button class="btn-toggle" title="Поставить метку на этом станке в игре" data-x="${m.loc.x}" data-y="${m.loc.y}" data-z="${m.loc.z}">📍</button>`
+        : ""}</td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="9" style="text-align:center;color:var(--muted)">Ничего не найдено</td></tr>`;
+  syncBulkUI(rows);
+}
+
+// ---------- массовое включение/выключение ----------
+const selectedMachines = new Set();
+
+function visibleMachineIDs() {
+  return [...document.querySelectorAll("#mTable tbody .mchk")].map(c => c.dataset.id);
+}
+function syncBulkUI(visibleRows) {
+  // выбор мог устареть после перестройки фабрики
+  const existing = new Set(machines.map(m => m.ID));
+  [...selectedMachines].forEach(id => { if (!existing.has(id)) selectedMachines.delete(id); });
+  const n = selectedMachines.size;
+  const off = document.getElementById("bulkOff");
+  const on = document.getElementById("bulkOn");
+  off.disabled = on.disabled = n === 0;
+  off.textContent = n ? `⏸ выключить выбранные (${n})` : "⏸ выключить выбранные";
+  on.textContent = n ? `▶ включить выбранные (${n})` : "▶ включить выбранные";
+  const vis = visibleMachineIDs();
+  document.getElementById("mChkAll").checked = vis.length > 0 && vis.every(id => selectedMachines.has(id));
+}
+
+document.querySelector("#mTable tbody").addEventListener("change", e => {
+  const c = e.target.closest(".mchk");
+  if (!c) return;
+  if (c.checked) selectedMachines.add(c.dataset.id);
+  else selectedMachines.delete(c.dataset.id);
+  syncBulkUI();
+});
+document.getElementById("mChkAll").addEventListener("change", e => {
+  const vis = visibleMachineIDs();
+  vis.forEach(id => e.target.checked ? selectedMachines.add(id) : selectedMachines.delete(id));
+  renderMachinesTable();
+});
+
+async function bulkSetEnabled(status) {
+  const ids = [...selectedMachines];
+  if (!ids.length) return;
+  const btn = document.getElementById(status ? "bulkOn" : "bulkOff");
+  btn.disabled = true;
+  btn.textContent = "выполняю…";
+  try {
+    await fetch(API + "/setEnabled", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-FRM-Authorization": FRM_TOKEN },
+      body: JSON.stringify(ids.map(ID => ({ ID, status }))),
+    });
+    selectedMachines.clear();
+  } catch (e) {
+    btn.textContent = "ошибка";
+  }
+  setTimeout(refresh, 700);
+}
+document.getElementById("bulkOff").addEventListener("click", () => bulkSetEnabled(false));
+document.getElementById("bulkOn").addEventListener("click", () => bulkSetEnabled(true));
+
+// включение/выключение построек через POST /setEnabled, метки через /createPing
+document.querySelector("#mTable tbody").addEventListener("click", async e => {
+  const btn = e.target.closest(".btn-toggle");
+  if (!btn) return;
+  if (btn.dataset.x !== undefined) { // 📍 метка в игре
+    btn.disabled = true;
+    try {
+      await fetch(API + "/createPing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-FRM-Authorization": FRM_TOKEN },
+        body: JSON.stringify({ x: +btn.dataset.x, y: +btn.dataset.y, z: +btn.dataset.z + 300 }),
+      });
+      btn.textContent = "✓";
+    } catch (err) { btn.textContent = "✕"; }
+    setTimeout(() => { btn.textContent = "📍"; btn.disabled = false; }, 1500);
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = "…";
+  try {
+    const r = await fetch(API + "/setEnabled", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-FRM-Authorization": FRM_TOKEN },
+      body: JSON.stringify({ ID: btn.dataset.id, status: btn.dataset.on === "1" }),
+    });
+    const data = await r.json();
+    if (!r.ok || (Array.isArray(data) && data.length === 0)) {
+      btn.textContent = "не поддерживается";
+      setTimeout(refresh, 2000);
+      return;
+    }
+    setTimeout(refresh, 700); // даём игре применить и показываем свежее состояние
+  } catch (err) {
+    btn.textContent = "ошибка";
+    btn.disabled = false;
+  }
+});
+
+document.querySelectorAll("#mTable th[data-k]").forEach(th => {
+  th.addEventListener("click", () => {
+    const k = th.dataset.k;
+    if (mSortKey === k) mSortAsc = !mSortAsc;
+    else { mSortKey = k; mSortAsc = true; }
+    renderMachinesTable();
+  });
+});
+["mSearch", "mOnlyProblems"].forEach(id =>
+  document.getElementById(id).addEventListener("input", renderMachinesTable));
+
+// ---------- КРУГОВОЙ РУБИЛЬНИК ГЕНЕРАТОРОВ ----------
+// Мод не сообщает, какой генератор переведён в ожидание, поэтому панель ведёт
+// свой реестр выключенных ЕЮ генераторов. Если генератор реально выдаёт энергию —
+// он вычёркивается из реестра автоматически.
+const genModal = document.getElementById("genModal");
+let genDialType = null, genDialValue = 0, genDialUnits = [];
+let genPaused = {};
+try { genPaused = JSON.parse(localStorage.getItem("frm_genPaused")) || {}; } catch (e) { genPaused = {}; }
+function saveGenPaused() {
+  try { localStorage.setItem("frm_genPaused", JSON.stringify(genPaused)); } catch (e) {}
+}
+function reconcileGenPaused(gens) {
+  let changed = false;
+  gens.forEach(g => {
+    if (g.DynamicProdCapacity > 0 && genPaused[g.ID]) { delete genPaused[g.ID]; changed = true; }
+  });
+  if (changed) saveGenPaused();
+}
+
+// выключен ли генератор (в т.ч. вручную в игре): доступная мощность 0,
+// хотя топливо есть — простой без спроса выглядит иначе (мощность > 0)
+function isGenPaused(u) {
+  if (u.DynamicProdCapacity > 0) return false;
+  const supplCls = u.Supplement?.ClassName || "";
+  const hasFuel = (u.FuelAmount || 0) > 0 ||
+    (u.FuelInventory || []).some(i => i.MaxAmount && i.ClassName !== supplCls && i.Amount > 0);
+  return hasFuel || !!genPaused[u.ID];
+}
+
+document.querySelector("#genTable tbody").addEventListener("click", e => {
+  const tr = e.target.closest("tr[data-gname]");
+  if (tr) openGenDial(tr.dataset.gname);
+});
+
+function openGenDial(name) {
+  const units = (cache.getGenerators || []).filter(g => g.Name === name);
+  if (!units.length) return;
+  reconcileGenPaused(units);
+  genDialType = name;
+  genDialUnits = units;
+  genDialValue = units.filter(u => !isGenPaused(u)).length;
+  modalBack.style.display = "block";
+  genModal.style.display = "block";
+  renderGenDial();
+}
+function closeGenDial() {
+  if (!genDialType) return;
+  genDialType = null;
+  genModal.style.display = "none";
+  genModal.innerHTML = ""; // иначе скрытые кнопки остаются «живыми»
+  if (!openItemCls) modalBack.style.display = "none";
+}
+
+function genDialGeometry(val, max) {
+  const frac = max > 0 ? val / max : 0;
+  const a = frac * 2 * Math.PI - Math.PI / 2;
+  return { x: 150 + 112 * Math.cos(a), y: 150 + 112 * Math.sin(a), frac };
+}
+
+function renderGenDial() {
+  const units = genDialUnits;
+  const max = units.length;
+  const active = units.filter(u => !isGenPaused(u)).length; // включено (не в ожидании)
+  const producing = units.filter(u => u.DynamicProdCapacity > 0).length;
+  const unitCap = max ? units.reduce((s, u) => s + (u.ProductionCapacity || 0), 0) / max : 0;
+  const C = 2 * Math.PI * 112;
+  const g0 = genDialGeometry(genDialValue, max);
+  genModal.innerHTML = `
+    <h1>${genDialType}</h1>
+    <div class="gsub">включено ${active} из ${max} · реально выдают энергию: ${producing}
+      <br>перетащите точку по кругу или жмите −/+</div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:12px">
+      <button class="stepbtn" id="gMinus">−</button>
+      <svg class="gendial" id="gSvg" width="300" height="300" viewBox="0 0 300 300">
+        <circle cx="150" cy="150" r="112" fill="none" stroke="var(--panel2)" stroke-width="24"/>
+        <circle id="gArc" cx="150" cy="150" r="112" fill="none" stroke="var(--orange)" stroke-width="24"
+          stroke-linecap="round" transform="rotate(-90 150 150)"
+          stroke-dasharray="${C * g0.frac} ${C}"/>
+        ${Array.from({ length: max }, (_, i) => {
+          const a = (i / max) * 2 * Math.PI - Math.PI / 2;
+          return `<circle cx="${150 + 112 * Math.cos(a)}" cy="${150 + 112 * Math.sin(a)}" r="2.5" fill="var(--bg)"/>`;
+        }).join("")}
+        <circle id="gHandle" class="handle" cx="${g0.x}" cy="${g0.y}" r="15" fill="#fff" stroke="var(--orange)" stroke-width="4"/>
+        <text id="gNum" x="150" y="150" text-anchor="middle" font-size="58" font-weight="700" fill="var(--text)">${genDialValue}</text>
+        <text x="150" y="178" text-anchor="middle" font-size="13" fill="var(--muted)">из ${max} генераторов</text>
+        <text id="gMW" x="150" y="200" text-anchor="middle" font-size="13" fill="var(--orange)"></text>
+      </svg>
+      <button class="stepbtn" id="gPlus">+</button>
+    </div>
+    <div class="gdiff" id="gDiff"></div>
+    <div class="gbtns">
+      <button id="gCancel">Отмена</button>
+      <button class="apply" id="gApply" disabled>Применить</button>
+    </div>`;
+
+  const svg = document.getElementById("gSvg");
+  const update = () => {
+    const g = genDialGeometry(genDialValue, max);
+    document.getElementById("gArc").setAttribute("stroke-dasharray", `${C * g.frac} ${C}`);
+    const h = document.getElementById("gHandle");
+    h.setAttribute("cx", g.x); h.setAttribute("cy", g.y);
+    document.getElementById("gNum").textContent = genDialValue;
+    document.getElementById("gMW").textContent = "≈ " + fmt(genDialValue * unitCap) + " МВт";
+    const d = genDialValue - active;
+    document.getElementById("gDiff").innerHTML = d === 0
+      ? "без изменений"
+      : d > 0 ? `<span class="pos">включится ${d} ген.</span>` : `<span class="neg">выключится ${-d} ген.</span>`;
+    document.getElementById("gApply").disabled = d === 0;
+  };
+  update();
+
+  const valueFromEvent = ev => {
+    const r = svg.getBoundingClientRect();
+    const scale = 300 / r.width;
+    const x = (ev.clientX - r.left) * scale - 150;
+    const y = (ev.clientY - r.top) * scale - 150;
+    let a = Math.atan2(y, x) + Math.PI / 2;
+    if (a < 0) a += 2 * Math.PI;
+    let v = Math.round(a / (2 * Math.PI) * max);
+    if (v > max) v = max;
+    // не даём «перескочить» через верх круга при перетаскивании
+    if (Math.abs(v - genDialValue) > max / 2) v = v > genDialValue ? 0 : max;
+    return v;
+  };
+  let dragging = false;
+  svg.addEventListener("pointerdown", ev => {
+    dragging = true;
+    svg.setPointerCapture(ev.pointerId);
+    genDialValue = valueFromEvent(ev); update();
+  });
+  svg.addEventListener("pointermove", ev => {
+    if (dragging) { genDialValue = valueFromEvent(ev); update(); }
+  });
+  svg.addEventListener("pointerup", () => { dragging = false; });
+  document.getElementById("gMinus").addEventListener("click", () => { if (genDialValue > 0) { genDialValue--; update(); } });
+  document.getElementById("gPlus").addEventListener("click", () => { if (genDialValue < max) { genDialValue++; update(); } });
+  document.getElementById("gCancel").addEventListener("click", closeGenDial);
+  document.getElementById("gApply").addEventListener("click", applyGenDial);
+}
+
+async function applyGenDial() {
+  const units = genDialUnits;
+  // выключаем в первую очередь те, что всё равно не производят; включаем — заправленные
+  const enabled = units.filter(u => !isGenPaused(u))
+    .sort((a, b) => (a.DynamicProdCapacity > 0 ? 1 : 0) - (b.DynamicProdCapacity > 0 ? 1 : 0));
+  const paused = units.filter(u => isGenPaused(u))
+    .sort((a, b) => (b.FuelAmount || 0) - (a.FuelAmount || 0));
+  const cmds = [];
+  if (genDialValue < enabled.length)
+    enabled.slice(0, enabled.length - genDialValue).forEach(u => cmds.push({ ID: u.ID, status: false }));
+  else if (genDialValue > enabled.length)
+    paused.slice(0, genDialValue - enabled.length).forEach(u => cmds.push({ ID: u.ID, status: true }));
+  if (!cmds.length) { closeGenDial(); return; }
+  const btn = document.getElementById("gApply");
+  btn.disabled = true; btn.textContent = "…";
+  try {
+    await fetch(API + "/setEnabled", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-FRM-Authorization": FRM_TOKEN },
+      body: JSON.stringify(cmds),
+    });
+    cmds.forEach(c => { if (c.status) delete genPaused[c.ID]; else genPaused[c.ID] = true; });
+    saveGenPaused();
+    closeGenDial();
+    setTimeout(refresh, 700);
+  } catch (e) { btn.textContent = "ошибка"; btn.disabled = false; }
+}
+
+// ---------- ИГРОВОЕ ВРЕМЯ ----------
+function renderGameTime(s) {
+  const el = document.getElementById("gameTime");
+  if (!s) { el.textContent = ""; return; }
+  const hh = String(s.Hours).padStart(2, "0");
+  const mm = String(s.Minutes).padStart(2, "0");
+  el.innerHTML = `${s.IsDay ? "☀️" : "🌙"} ${hh}:${mm}` +
+    ` <span style="color:var(--muted);font-size:12px">· день ${s.PassedDays}${s.IsPaused ? " · ⏸ пауза" : ""}</span>`;
+  el.title = `Сессия «${s.SessionName}» · наиграно ${s.TotalPlayDurationText} · день длится ${s.DayLength} мин, ночь ${s.NightLength} мин`;
+}
+
+// ---------- ДОЛГАЯ ИСТОРИЯ (IndexedDB, 14 дней) ----------
+let histDB = null;
+(function initHistDB() {
+  try {
+    const rq = indexedDB.open("frm-history", 1);
+    rq.onupgradeneeded = e => {
+      const st = e.target.result.createObjectStore("hist", { autoIncrement: true });
+      st.createIndex("by_series_t", ["s", "t"]);
+      st.createIndex("by_t", "t");
+    };
+    rq.onsuccess = e => {
+      histDB = e.target.result;
+      // чистим записи старше 14 дней
+      const cutoff = Date.now() - 14 * 86400000;
+      const idx = histDB.transaction("hist", "readwrite").objectStore("hist").index("by_t");
+      idx.openCursor(IDBKeyRange.upperBound(cutoff)).onsuccess = ev => {
+        const c = ev.target.result;
+        if (c) { c.delete(); c.continue(); }
+      };
+    };
+  } catch (e) {}
+})();
+
+// раз в минуту сохраняем срез: производство/потребление/склад по предметам + энергия
+setInterval(() => {
+  if (!histDB || !items.length) return;
+  try {
+    const t = Date.now();
+    const st = histDB.transaction("hist", "readwrite").objectStore("hist");
+    items.forEach(it => {
+      if (it.status === "idle") return;
+      const w = worldInvData.find(x => x.ClassName === it.ClassName);
+      st.add({ s: "i:" + it.ClassName, t, p: it.CurrentProd, c: it.CurrentConsumed, a: w ? w.Amount : null });
+    });
+    if (cache.getPower) {
+      const bc = cache.getPower.reduce((s, x) => s + x.BatteryCapacity, 0);
+      st.add({
+        s: "power", t,
+        c: cache.getPower.reduce((s, x) => s + x.PowerConsumed, 0),
+        cap: cache.getPower.reduce((s, x) => s + x.PowerCapacity, 0),
+        bp: bc > 0 ? cache.getPower.reduce((s, x) => s + x.BatteryCapacity * x.BatteryPercent / 100, 0) / bc * 100 : null,
+      });
+    }
+  } catch (e) {}
+}, 60000);
+
+function idbRange(series, fromT) {
+  return new Promise(res => {
+    if (!histDB) { res([]); return; }
+    try {
+      const idx = histDB.transaction("hist").objectStore("hist").index("by_series_t");
+      const rq = idx.getAll(IDBKeyRange.bound([series, fromT], [series, Infinity]));
+      rq.onsuccess = () => res(rq.result || []);
+      rq.onerror = () => res([]);
+    } catch (e) { res([]); }
+  });
+}
+const rangeCache = {};
+async function getHistRange(series, hours) {
+  const key = series + "|" + hours;
+  const rc = rangeCache[key];
+  if (rc && Date.now() - rc.at < 55000) return rc.d;
+  const d = await idbRange(series, Date.now() - hours * 3600000);
+  rangeCache[key] = { at: Date.now(), d };
+  return d;
+}
+function rangeBtnsHTML(cur) {
+  return `<span class="rangebtns">` +
+    [["session", "сессия"], ["24", "24 ч"], ["168", "7 дней"]].map(([v, l]) =>
+      `<button data-range="${v}" class="${cur === v ? "active" : ""}">${l}</button>`).join("") +
+    `</span>`;
+}
+
+// ---------- УВЕДОМЛЕНИЯ ----------
+const POWER_ALERT_LOAD = 80;        // % загрузки сети, при котором бить тревогу
+const ALERT_REPEAT_MS = 5 * 60000;  // повторять, пока проблема не решена, раз в 5 мин
+const alertState = {};              // key → время последнего уведомления
+
+function beep() {
+  if (localStorage.getItem("frm_sound") === "off") return;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [0, 0.25].forEach(dt => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = 880; g.gain.value = 0.08;
+      o.start(ctx.currentTime + dt); o.stop(ctx.currentTime + dt + 0.15);
+    });
+  } catch (e) {}
+}
+
+// мод принимает JSON только с экранированным юникодом (\uXXXX), иначе кириллица ломается
+function jsonEscaped(obj) {
+  return JSON.stringify(obj).replace(/[\u0080-\uffff]/g,
+    ch => "\\u" + ch.charCodeAt(0).toString(16).padStart(4, "0"));
+}
+
+// сообщение в игровой чат (видно прямо в игре)
+async function sendChat(message, color) {
+  if (localStorage.getItem("frm_chat") === "off") return;
+  try {
+    await fetch(API + "/sendChatMessage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-FRM-Authorization": FRM_TOKEN },
+      body: jsonEscaped({
+        // эмодзи вне BMP игровой чат не переваривает — вырезаем
+        message: message.replace(/[\ud800-\udfff]/g, "").slice(0, 180),
+        sender: "Панель",
+        color: color || { r: 1, g: 0.35, b: 0.3, a: 1 },
+      }),
+    });
+  } catch (e) {}
+}
+
+const liveNotifs = {}; // чтобы закрывать предыдущее уведомление той же тревоги
+function fireAlert(key, title, body) {
+  const now = Date.now();
+  if (alertState[key] && now - alertState[key] < ALERT_REPEAT_MS) return;
+  alertState[key] = now;
+  beep();
+  sendChat(title + " " + body);
+  if ("Notification" in window && Notification.permission === "granted" &&
+      localStorage.getItem("frm_notif") === "on") {
+    try {
+      if (liveNotifs[key]) liveNotifs[key].close();
+      // tag должен быть уникальным: повтор с тем же tag тихо заменяет старое
+      // уведомление и НЕ показывается поверх экрана
+      liveNotifs[key] = new Notification(title, {
+        body,
+        tag: key + "-" + now,
+        requireInteraction: true, // висит, пока не закроют — аварию нельзя пропустить
+      });
+    } catch (e) {}
+  }
+}
+
+function checkAlerts(circuits) {
+  const msgs = [];
+  const totCons = circuits.reduce((s, c) => s + c.PowerConsumed, 0);
+  const totCap = circuits.reduce((s, c) => s + c.PowerCapacity, 0);
+  const loadPct = totCap > 0 ? totCons / totCap * 100 : 0;
+
+  if (loadPct >= POWER_ALERT_LOAD) {
+    msgs.push(`⚡ Сеть загружена на <b>${fmt(loadPct)}%</b> (${fmt(totCons)} из ${fmt(totCap)} МВт) — запас мощности меньше ${100 - POWER_ALERT_LOAD}%. Стройте генераторы!`);
+    fireAlert("powerLoad", "⚡ Мало запаса мощности!",
+      `Сеть загружена на ${fmt(loadPct)}% (${fmt(totCons)} из ${fmt(totCap)} МВт)`);
+  } else delete alertState.powerLoad;
+
+  circuits.forEach((c, i) => {
+    if (c.FuseTriggered) {
+      msgs.push(`🔥 Сработал предохранитель в сети №${c.CircuitGroupID ?? i} — фабрика обесточена!`);
+      fireAlert("fuse" + i, "🔥 Авария электросети!", "Сработал предохранитель — включите его заново и добавьте генераторы");
+    } else delete alertState["fuse" + i];
+  });
+
+  // батареи разряжаются = выработки не хватает, сеть живёт на резерве
+  const batOut = circuits.reduce((s, c) => s + c.BatteryOutput, 0);
+  if (batOut > 0.5) {
+    const te = circuits.filter(c => c.BatteryOutput > 0)
+      .map(c => parseHMS(c.BatteryTimeEmpty)).filter(x => x > 0);
+    const left = te.length ? fmtDur(Math.min(...te)) : null;
+    msgs.push(`🔋 Батареи разряжаются (−${fmt(batOut)} МВт): выработка не покрывает потребление${left ? ", заряда хватит на " + left : ""}. Добавьте генераторы!`);
+    fireAlert("batteryDrain", "🔋 Батареи разряжаются!",
+      `Не хватает ${fmt(batOut)} МВт выработки${left ? ", заряда на " + left : ""}`);
+  } else delete alertState.batteryDrain;
+
+  msgs.push(...fuelWarnings);
+
+  const box = document.getElementById("alertBox");
+  box.innerHTML = msgs.join("<br>");
+  box.style.display = msgs.length ? "block" : "none";
+}
+
+// ---------- настройки уведомлений (⚙ в шапке) ----------
+const notifPanel = document.getElementById("notifPanel");
+const optPush = document.getElementById("optPush");
+const optChat = document.getElementById("optChat");
+const optSound = document.getElementById("optSound");
+const pushHint = document.getElementById("pushHint");
+
+function syncNotifPanel() {
+  const pushGranted = "Notification" in window && Notification.permission === "granted";
+  optPush.checked = pushGranted && localStorage.getItem("frm_notif") === "on";
+  optChat.checked = localStorage.getItem("frm_chat") !== "off";
+  optSound.checked = localStorage.getItem("frm_sound") !== "off";
+  document.getElementById("optToken").value = FRM_TOKEN;
+  document.getElementById("optApiPort").value = API_PORT;
+  if (!window.isSecureContext)
+    pushHint.textContent = "недоступно на этом адресе (нужен localhost или флаг в chrome://flags)";
+  else if ("Notification" in window && Notification.permission === "denied")
+    pushHint.textContent = "запрещено в браузере: замок 🔒 у адреса → Уведомления → Разрешить";
+  else
+    pushHint.textContent = "всплывают поверх других окон, даже когда вкладка свёрнута";
+}
+
+document.getElementById("notifCfgBtn").addEventListener("click", e => {
+  e.stopPropagation();
+  notifPanel.classList.toggle("hidden");
+  if (!notifPanel.classList.contains("hidden")) syncNotifPanel();
+});
+document.addEventListener("click", e => {
+  if (!notifPanel.classList.contains("hidden") &&
+      !notifPanel.contains(e.target)) notifPanel.classList.add("hidden");
+});
+
+optPush.addEventListener("change", async () => {
+  if (optPush.checked) {
+    if ("Notification" in window && Notification.permission !== "granted")
+      await Notification.requestPermission();
+    const ok = "Notification" in window && Notification.permission === "granted";
+    localStorage.setItem("frm_notif", ok ? "on" : "off");
+  } else {
+    localStorage.setItem("frm_notif", "off");
+  }
+  syncNotifPanel();
+});
+optChat.addEventListener("change", () =>
+  localStorage.setItem("frm_chat", optChat.checked ? "on" : "off"));
+optSound.addEventListener("change", () =>
+  localStorage.setItem("frm_sound", optSound.checked ? "on" : "off"));
+document.getElementById("optToken").addEventListener("input", e => {
+  FRM_TOKEN = e.target.value.trim();
+  localStorage.setItem("frm_token", FRM_TOKEN);
+});
+document.getElementById("optApiPort").addEventListener("change", e => {
+  const p = String(parseInt(e.target.value, 10) || 8080);
+  if (p !== API_PORT) { localStorage.setItem("frm_apiPort", p); location.reload(); }
+});
+syncNotifPanel();
+
+// тестовое уведомление — проверка звука, баннера и браузерного уведомления
+document.getElementById("notifTestBtn").addEventListener("click", async () => {
+  beep();
+  sendChat("Тест: так будут выглядеть тревоги в игровом чате.", { r: 0.98, g: 0.58, b: 0.29, a: 1 });
+  const box = document.getElementById("alertBox");
+  box.innerHTML = "🔔 Это тестовое предупреждение — так будет выглядеть сигнал об аварии. Баннер исчезнет через 10 секунд.";
+  box.style.display = "block";
+  setTimeout(() => { if (box.innerHTML.startsWith("🔔")) { box.innerHTML = ""; box.style.display = "none"; } }, 10000);
+
+  if (!("Notification" in window) || !window.isSecureContext) {
+    box.innerHTML += "<br>❌ Браузер блокирует уведомления на этом адресе: страницы по http:// с IP-адресом считаются «небезопасными» (работают только localhost и https). " +
+      "Чтобы включить уведомления на этом устройстве, откройте <b>chrome://flags/#unsafely-treat-insecure-origin-as-secure</b>, " +
+      "впишите туда <b>" + location.origin + "</b>, выберите Enabled и перезапустите браузер. " +
+      "Звуковой сигнал тревоги работает и без этого.";
+    return;
+  }
+  if (Notification.permission !== "granted") await Notification.requestPermission();
+  if (Notification.permission === "granted") {
+    localStorage.setItem("frm_notif", "on");
+    syncNotifPanel();
+    new Notification("🔔 Тест: панель фабрики", {
+      body: "Уведомления работают! Так вы узнаете об аварии электросети.",
+      tag: "frm-test-" + Date.now(),
+      requireInteraction: true,
+    });
+    const isMac = /Mac/i.test(navigator.platform || navigator.userAgent);
+    box.innerHTML += "<br>✅ Разрешение есть, уведомление отправлено. Если его не видно — его прячет система: " + (isMac
+      ? "на macOS откройте Системные настройки → Уведомления → Google Chrome → разрешите и выберите стиль «Предупреждения»; выключите «Фокусирование» (луна в строке меню). " +
+        "Либо в chrome://flags/#enable-system-notifications поставьте Disabled — Chrome будет показывать уведомления сам, минуя macOS."
+      : "в Windows проверьте «Не беспокоить» (значок уведомлений в углу панели задач) и Параметры → Система → Уведомления → отключите правило «Не беспокоить автоматически при игре».");
+  } else {
+    box.innerHTML += "<br>❌ Браузер не дал разрешение на уведомления (статус: " + Notification.permission + "). " +
+      "Нажмите на замок 🔒 рядом с адресом страницы → «Уведомления» → «Разрешить».";
+  }
+});
+
+// ---------- ЭЛЕКТРИЧЕСТВО ----------
+function renderPower(circuits, gens) {
+  const totProd = circuits.reduce((s, c) => s + c.PowerProduction, 0);
+  const totCons = circuits.reduce((s, c) => s + c.PowerConsumed, 0);
+  const totCap = circuits.reduce((s, c) => s + c.PowerCapacity, 0);
+  const totMax = circuits.reduce((s, c) => s + c.PowerMaxConsumed, 0);
+  const anyFuse = circuits.some(c => c.FuseTriggered);
+  const reserve = totCap - totCons;
+  const loadPct = totCap > 0 ? totCons / totCap * 100 : 0;
+
+  // агрегаты по накопителям (по всем сетям)
+  const batCap = circuits.reduce((s, c) => s + c.BatteryCapacity, 0);
+  const batStored = circuits.reduce((s, c) => s + c.BatteryCapacity * c.BatteryPercent / 100, 0);
+  const batIn = circuits.reduce((s, c) => s + c.BatteryInput, 0);
+  const batOut = circuits.reduce((s, c) => s + c.BatteryOutput, 0);
+  const batPct = batCap > 0 ? batStored / batCap * 100 : 0;
+
+  if (!powerHistory.length || Date.now() - powerHistory[powerHistory.length - 1].t >= 4500) {
+    powerHistory.push({ t: Date.now(), cons: totCons, cap: totCap, batPct: batCap > 0 ? batPct : null });
+    if (powerHistory.length > 720) powerHistory.shift(); // ~1 час
+  }
+  renderBattery(circuits, { batCap, batStored, batIn, batOut, batPct, totCons });
+
+  document.getElementById("powerCards").innerHTML = `
+    <div class="card blue"><div class="label">Потребление</div><div class="value">${fmt(totCons)} МВт</div><div class="sub">пик при полной загрузке: ${fmt(totMax)} МВт</div></div>
+    <div class="card orange"><div class="label">Доступная мощность</div><div class="value">${fmt(totCap)} МВт</div><div class="sub">выработка сейчас: ${fmt(totProd)} МВт</div></div>
+    <div class="card ${reserve < totCap * 0.1 ? "red" : reserve < totCap * 0.25 ? "yellow" : "green"}">
+      <div class="label">Запас мощности</div><div class="value">${fmt(reserve)} МВт</div>
+      <div class="sub">сеть загружена на ${fmt(loadPct)}%</div></div>
+    <div class="card ${anyFuse ? "red" : totMax > totCap ? "yellow" : "green"}">
+      <div class="label">Состояние сети</div>
+      <div class="value">${anyFuse ? "⚠ АВАРИЯ" : totMax > totCap ? "Риск" : "OK"}</div>
+      <div class="sub">${anyFuse ? "сработал предохранитель!" : totMax > totCap ? "пиковое потребление (" + fmt(totMax) + " МВт) выше мощности" : "мощности хватает даже в пике"}</div></div>
+  `;
+
+  document.getElementById("circuits").innerHTML = circuits.map((c, i) => {
+    const pct = c.PowerCapacity > 0 ? Math.min(100, c.PowerConsumed / c.PowerCapacity * 100) : 0;
+    const barColor = pct > 90 ? "var(--red)" : pct > 75 ? "var(--yellow)" : "var(--green)";
+    const bat = c.BatteryCapacity > 0
+      ? `<div class="pstat"><div class="label">Батареи</div><div class="value">${fmt(c.BatteryPercent)}%</div></div>
+         <div class="pstat"><div class="label">${c.BatteryDifferential >= 0 ? "Заряд" : "Разряд"}</div><div class="value">${fmtSigned(c.BatteryDifferential)} МВт</div></div>`
+      : "";
+    return `<div class="circuit ${c.FuseTriggered ? "fuse" : ""}">
+      <h3>Сеть №${c.CircuitGroupID ?? i} ${c.FuseTriggered ? '<span class="badge b-deficit">ПРЕДОХРАНИТЕЛЬ СРАБОТАЛ</span>' : ""}</h3>
+      <div class="powergrid">
+        <div class="pstat"><div class="label">Потребление</div><div class="value">${fmt(c.PowerConsumed)} МВт</div></div>
+        <div class="pstat"><div class="label">Мощность</div><div class="value">${fmt(c.PowerCapacity)} МВт</div></div>
+        <div class="pstat"><div class="label">Пик потребления</div><div class="value" style="color:${c.PowerMaxConsumed > c.PowerCapacity ? "var(--red)" : "inherit"}">${fmt(c.PowerMaxConsumed)} МВт</div></div>
+        <div class="pstat"><div class="label">Выработка</div><div class="value">${fmt(c.PowerProduction)} МВт</div></div>
+        ${bat}
+      </div>
+      <div class="pbar"><i style="width:${pct}%;background:${barColor}"></i><span>${fmt(pct)}% загрузки</span></div>
+    </div>`;
+  }).join("");
+
+  // генераторы по типам (+ учёт топлива)
+  // для жидкостей мод отдаёт нулевую энергоёмкость — берём константы игры, МДж/м³ (или за стержень)
+  const FUEL_MJ = {
+    Desc_LiquidFuel_C: 750,
+    Desc_LiquidTurboFuel_C: 2000,
+    Desc_LiquidBiofuel_C: 750,
+    Desc_RocketFuel_C: 3600,
+    Desc_IonizedFuel_C: 5000,
+    Desc_NuclearFuelRod_C: 750000,
+    Desc_PlutoniumFuelRod_C: 1500000,
+  };
+  const byType = {};
+  gens.forEach(g => {
+    const t = byType[g.Name] || (byType[g.Name] = {
+      count: 0, cap: 0, load: 0, running: 0,
+      fuelItems: 0, fuelMax: 0, fuelMJ: 0, burnMW: 0, enabledCap: 0, fuelNames: {}, geo: false,
+    });
+    t.count++;
+    t.cap += g.ProductionCapacity || 0;
+    t.load += g.LoadPercentage || 0;
+    if ((g.LoadPercentage || 0) > 0 || g.IsFullSpeed) t.running++;
+    if (g.GeoMaxPower > 0) t.geo = true; // геотермальный — топлива нет
+    const supplCls = g.Supplement?.ClassName || "";
+    (g.FuelInventory || []).forEach(i => {
+      if (!i.MaxAmount || i.ClassName === supplCls) return; // вода — не топливо
+      const mj = (g.AvailableFuel || []).find(a => a.ClassName === i.ClassName)?.Amount
+        || FUEL_MJ[i.ClassName] || 0;
+      t.fuelItems += i.Amount;
+      t.fuelMax += i.MaxAmount;
+      t.fuelMJ += i.Amount * mj;
+      if (i.Amount > 0) t.fuelNames[i.Name] = true;
+    });
+    if (!isGenPaused(g)) {
+      t.burnMW += g.RegulatedDemandProd || 0;       // фактический расход сейчас
+      t.enabledCap += g.ProductionCapacity || 0;    // расход при полной нагрузке
+    }
+  });
+
+  fuelWarnings = [];
+  document.querySelector("#genTable tbody").innerHTML =
+    Object.entries(byType).map(([name, t]) => {
+      let fuelCell = "—", stockCell = "—", lastsCell = "—";
+      if (!t.geo && t.fuelMax > 0) {
+        const names = Object.keys(t.fuelNames).join(", ") || "пусто";
+        fuelCell = `${names} · ${fmt(t.fuelItems)} шт`;
+        const pct = t.fuelItems / t.fuelMax * 100;
+        const barColor = pct < 20 ? "var(--red)" : pct < 50 ? "var(--yellow)" : "var(--green)";
+        stockCell = `${fmt(pct)}%<span class="bar"><i style="width:${Math.min(100, pct)}%;background:${barColor}"></i></span>`;
+        if (t.burnMW > 1 && t.fuelMJ > 0) {
+          const sec = t.fuelMJ / t.burnMW; // МВт = МДж/с
+          const fullSec = t.enabledCap > 0 ? t.fuelMJ / t.enabledCap : 0;
+          // тревога — только когда буфер реально истощается, а не когда топки полны и идёт подвоз
+          const critical = sec < 900 && pct < 30;
+          const cls = critical ? "neg" : sec < 3600 ? "" : "pos";
+          lastsCell = `<span class="${cls}" title="Запас в топках при текущем расходе (при полной нагрузке включённых: ${fmtDur(fullSec)}). Пока работает подвоз, запас пополняется.">${fmtDur(sec)}</span>`;
+          if (critical) {
+            fuelWarnings.push(`⛽ ${name}: топливо на исходе — буфер ${fmt(pct)}%, хватит на ${fmtDur(sec)}. Проверьте подвоз!`);
+            fireAlert("fuel:" + name, "⛽ Топливо на исходе!", `${name}: буфер ${fmt(pct)}%, хватит на ${fmtDur(sec)}`);
+          } else delete alertState["fuel:" + name];
+        } else {
+          lastsCell = t.fuelItems > 0 ? '<span class="zero">не расходуется</span>' : '<span class="neg">пусто!</span>';
+        }
+      } else if (t.geo) {
+        fuelCell = '<span class="zero">геотермальный</span>';
+      }
+      return `<tr data-gname="${name}" title="Нажмите, чтобы выбрать, сколько генераторов должно работать">
+        <td>${name}</td>
+        <td class="num">${t.count}</td>
+        <td class="num">${fmt(t.cap)}</td>
+        <td class="num">${fmt(t.load / t.count)}%</td>
+        <td class="num">${t.running} / ${t.count}</td>
+        <td>${fuelCell}</td>
+        <td class="num">${stockCell}</td>
+        <td class="num">${lastsCell}</td>
+      </tr>`;
+    }).join("") ||
+    `<tr><td colspan="8" style="text-align:center;color:var(--muted)">Генераторы не найдены</td></tr>`;
+
+  drawPowerChart();
+}
+
+// "05:48:46" → секунды
+function parseHMS(s) {
+  if (!s || typeof s !== "string") return 0;
+  const p = s.split(":").map(Number);
+  return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : 0;
+}
+function fmtDur(sec) {
+  if (!isFinite(sec) || sec <= 0) return "—";
+  const h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
+  return h > 0 ? `${h} ч ${m} мин` : `${m} мин`;
+}
+
+function renderBattery(circuits, b) {
+  const sec = document.getElementById("batterySection");
+  if (b.batCap <= 0) { sec.classList.add("hidden"); return; }
+  sec.classList.remove("hidden");
+
+  const charging = b.batIn > 0.5, draining = b.batOut > 0.5;
+  // время до полного заряда / разряда — худшее по сетям
+  const tFull = Math.max(0, ...circuits.filter(c => c.BatteryInput > 0).map(c => parseHMS(c.BatteryTimeFull)));
+  const tEmpty = circuits.filter(c => c.BatteryOutput > 0).map(c => parseHMS(c.BatteryTimeEmpty)).filter(x => x > 0);
+  const autonomyMin = b.totCons > 0 ? b.batStored / b.totCons * 60 : Infinity;
+
+  let mode, modeCls, modeSub;
+  if (draining) {
+    mode = `🔻 −${fmt(b.batOut)} МВт`; modeCls = "red";
+    modeSub = tEmpty.length ? "разрядятся через " + fmtDur(Math.min(...tEmpty)) : "идёт разряд";
+  } else if (charging) {
+    mode = `⚡ +${fmt(b.batIn)} МВт`; modeCls = "green";
+    modeSub = b.batPct >= 99.9 ? "полностью заряжены" : "полный заряд через " + fmtDur(tFull);
+  } else {
+    mode = "⏸ ожидание"; modeCls = "blue";
+    modeSub = "не заряжаются и не разряжаются";
+  }
+
+  const barColor = b.batPct < 20 ? "var(--red)" : b.batPct < 50 ? "var(--yellow)" : "var(--green)";
+  sec.innerHTML = `
+    <h2>🔋 Накопители энергии</h2>
+    <div class="cards">
+      <div class="card ${b.batPct < 20 ? "red" : "green"}"><div class="label">Накоплено</div>
+        <div class="value">${fmt(b.batStored)} МВт·ч</div>
+        <div class="sub">${fmt(b.batPct)}% от ёмкости ${fmt(b.batCap)} МВт·ч</div></div>
+      <div class="card ${modeCls}"><div class="label">Режим</div>
+        <div class="value">${mode}</div><div class="sub">${modeSub}</div></div>
+      <div class="card ${autonomyMin < 10 ? "red" : autonomyMin < 30 ? "yellow" : "blue"}"><div class="label">Автономность</div>
+        <div class="value">${fmtDur(autonomyMin * 60)}</div>
+        <div class="sub">если вся генерация отключится (при ${fmt(b.totCons)} МВт)</div></div>
+      <div class="card ${draining ? "red" : "green"}"><div class="label">Роль сейчас</div>
+        <div class="value">${draining ? "СПАСАЮТ СЕТЬ" : charging ? "Копят излишек" : "Резерв"}</div>
+        <div class="sub">${draining ? "выработка не покрывает потребление!" : charging ? "лишняя выработка не пропадает" : "ждут своего часа"}</div></div>
+    </div>
+    <div class="pbar" style="height:20px;margin-top:4px"><i style="width:${Math.min(100, b.batPct)}%;background:${barColor}"></i><span style="line-height:20px;font-size:12px">${fmt(b.batPct)}% · ${fmt(b.batStored)} из ${fmt(b.batCap)} МВт·ч</span></div>
+    <h2 style="margin-top:16px">📈 Заряд накопителей</h2>
+    <canvas id="batChart" width="1200" height="130"></canvas>
+  `;
+  const pts = powerHistory.filter(p => p.batPct !== null && p.batPct !== undefined);
+  drawLines(document.getElementById("batChart"), [
+    { pts: pts.map(p => ({ t: p.t, v: p.batPct })), color: "#4caf50", label: "заряд, %" },
+  ]);
+}
+
+let powerRange = "session";
+document.getElementById("powerRangeWrap").addEventListener("click", e => {
+  const b = e.target.closest("button[data-range]");
+  if (b) { powerRange = b.dataset.range; drawPowerChart(); }
+});
+
+function drawPowerChart() {
+  document.getElementById("powerRangeWrap").innerHTML = rangeBtnsHTML(powerRange);
+  const cv = document.getElementById("powerChart");
+  if (powerRange === "session") { drawChart(); return; }
+  getHistRange("power", +powerRange).then(rows => {
+    if (powerRange === "session") return;
+    drawLines(cv, [
+      { pts: rows.map(r => ({ t: r.t, v: r.cap })), color: "#fa9549", label: "мощность" },
+      { pts: rows.map(r => ({ t: r.t, v: r.c })), color: "#64b5f6", label: "потребление" },
+    ]);
+  });
+}
+
+function drawChart() {
+  drawLines(document.getElementById("powerChart"), [
+    { pts: powerHistory.map(p => ({ t: p.t, v: p.cap })), color: "#fa9549", label: "мощность" },
+    { pts: powerHistory.map(p => ({ t: p.t, v: p.cons })), color: "#64b5f6", label: "потребление" },
+  ]);
+}
+
+// ---------- КАЛЬКУЛЯТОР ПРОИЗВОДСТВА ----------
+// названия и потребление станков (МВт); также служит фильтром «фабричных» рецептов
+const MACHINE_RU = {
+  Build_SmelterMk1_C: "Плавильня",
+  Build_FoundryMk1_C: "Литейный цех",
+  Build_ConstructorMk1_C: "Конструктор",
+  Build_AssemblerMk1_C: "Сборщик",
+  Build_ManufacturerMk1_C: "Производственная машина",
+  Build_OilRefinery_C: "Нефтеперерабатывающий завод",
+  Build_Packager_C: "Упаковщик",
+  Build_Blender_C: "Смеситель",
+  Build_HadronCollider_C: "Ускоритель частиц",
+  Build_QuantumEncoder_C: "Квантовый кодировщик",
+  Build_Converter_C: "Конвертер",
+};
+const MACHINE_MW = {
+  Build_SmelterMk1_C: 4, Build_FoundryMk1_C: 16, Build_ConstructorMk1_C: 4,
+  Build_AssemblerMk1_C: 15, Build_ManufacturerMk1_C: 55, Build_OilRefinery_C: 30,
+  Build_Packager_C: 10, Build_Blender_C: 75, Build_HadronCollider_C: 500,
+  Build_QuantumEncoder_C: 1000, Build_Converter_C: 250,
+};
+let recipesAll = null;   // фабричные рецепты (загружаются при первом открытии вкладки)
+let calcMode = "A";      // A: есть сырьё → сколько станков; B: нужен продукт
+let calcRecipe = null;
+let calcFocus = null;    // ClassName предмета, к которому относится вводимое число
+let calcRate = 0;
+const calcHistory = [];  // для кнопки «назад» при проваливании по цепочке
+
+async function loadRecipes() {
+  if (recipesAll) return recipesAll;
+  document.getElementById("calcMatches").innerHTML =
+    '<p style="color:var(--muted)">Загружаю рецепты из игры…</p>';
+  try {
+    const all = await getJSON("/getRecipes");
+    recipesAll = all.filter(r =>
+      (r.Events || []).length === 0 &&
+      (r.ProducedIn || []).some(p => MACHINE_RU[p]) &&
+      (r.Products || []).length && (r.Ingredients || []).length);
+    document.getElementById("calcMatches").innerHTML =
+      `<p style="color:var(--muted)">Загружено ${recipesAll.length} рецептов — ищите!</p>`;
+  } catch (e) {
+    document.getElementById("calcMatches").innerHTML =
+      '<p class="neg">Не удалось загрузить рецепты — игра запущена?</p>';
+  }
+  return recipesAll;
+}
+document.querySelector('.tab[data-tab="calc"]').addEventListener("click", loadRecipes);
+
+function calcMachine(r) {
+  const cls = (r.ProducedIn || []).find(p => MACHINE_RU[p]);
+  return {
+    cls,
+    name: rawMachines.find(m => m.ClassName === cls)?.Name || MACHINE_RU[cls] || cls,
+    mw: MACHINE_MW[cls] || 0,
+  };
+}
+const isAlt = r => /Alternate/i.test(r.ClassName);
+
+document.getElementById("calcSearch").addEventListener("input", async e => {
+  const q = e.target.value.toLowerCase().trim();
+  const box = document.getElementById("calcMatches");
+  if (q.length < 2) { box.innerHTML = ""; return; }
+  const list = await loadRecipes();
+  if (!list) return;
+  const hits = list.filter(r =>
+    r.Name.toLowerCase().includes(q) ||
+    (r.Products || []).some(p => p.Name.toLowerCase().includes(q)))
+    .sort((a, b) => isAlt(a) - isAlt(b) || a.Name.length - b.Name.length)
+    .slice(0, 12);
+  box.innerHTML = hits.length
+    ? hits.map((r, i) => `<button class="btn-toggle" style="margin:3px 4px 3px 0" data-ri="${recipesAll.indexOf(r)}">
+        ${r.Name}${isAlt(r) ? ' <span class="badge b-limit">АЛЬТ</span>' : ""} <span style="color:var(--muted)">· ${calcMachine(r).name}</span>
+      </button>`).join("")
+    : '<p style="color:var(--muted)">Ничего не найдено</p>';
+});
+
+document.getElementById("calcMatches").addEventListener("click", e => {
+  const b = e.target.closest("button[data-ri]");
+  if (!b) return;
+  calcHistory.length = 0;
+  selectCalcRecipe(recipesAll[+b.dataset.ri]);
+});
+
+function selectCalcRecipe(r, keepRate) {
+  calcRecipe = r;
+  const pool = calcMode === "A" ? r.Ingredients : r.Products;
+  calcFocus = pool[0].ClassName;
+  if (!keepRate) calcRate = 0;
+  document.getElementById("calcMatches").innerHTML = "";
+  renderCalc();
+}
+
+["calcModeA", "calcModeB"].forEach(id =>
+  document.getElementById(id).addEventListener("click", () => {
+    calcMode = id === "calcModeA" ? "A" : "B";
+    document.getElementById("calcModeA").classList.toggle("active", calcMode === "A");
+    document.getElementById("calcModeB").classList.toggle("active", calcMode === "B");
+    if (calcRecipe) selectCalcRecipe(calcRecipe);
+  }));
+
+function renderCalc() {
+  const r = calcRecipe;
+  const body = document.getElementById("calcBody");
+  if (!r) return;
+  const m = calcMachine(r);
+  const pool = calcMode === "A" ? r.Ingredients : r.Products;
+  const focus = pool.find(x => x.ClassName === calcFocus) || pool[0];
+  calcFocus = focus.ClassName;
+
+  const recipeInfo = `
+    <h2 style="margin-top:14px">${r.Name}${isAlt(r) ? ' <span class="badge b-limit">АЛЬТ</span>' : ""}</h2>
+    <p style="color:var(--muted);margin:2px 0 10px">
+      ${m.name}: ${r.Ingredients.map(i => `${i.Name} ${fmt(i.FactoryRate)}/мин`).join(" + ")}
+      → ${r.Products.map(p => `${p.Name} ${fmt(p.FactoryRate)}/мин`).join(" + ")}
+      · цикл ${fmt(r.FactoryDuration)} c${m.mw ? " · ≈" + m.mw + " МВт/станок" : ""}
+    </p>`;
+
+  const focusSelect = pool.length > 1
+    ? `<select id="calcFocusSel">${pool.map(x =>
+        `<option value="${x.ClassName}" ${x.ClassName === calcFocus ? "selected" : ""}>${x.Name}</option>`).join("")}</select>`
+    : `<b>${focus.Name}</b>`;
+
+  const inputRow = `
+    <div class="toolbar" style="margin:6px 0 14px">
+      <label>${calcMode === "A" ? "Поток сырья:" : "Нужно продукта:"}&nbsp;${focusSelect}</label>
+      <input type="number" id="calcRate" min="0" step="any" value="${calcRate || ""}" placeholder="шт/мин" style="width:120px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 10px">
+      <span style="color:var(--muted)">шт/мин</span>
+      ${calcHistory.length ? '<button id="calcBack" class="btn-toggle">⬅ назад</button>' : ""}
+    </div>`;
+
+  let results = "";
+  if (calcRate > 0) {
+    const n = calcRate / focus.FactoryRate;      // станков (дробно)
+    const whole = Math.floor(n + 1e-9);
+    const frac = n - whole;
+    const machines = Math.ceil(n - 1e-9);
+    const split = frac > 0.001
+      ? `${whole ? whole + " на 100% + " : ""}1 на ${fmt(frac * 100)}%`
+      : `${whole} на 100%`;
+    const liveIt = items.find(i => i.ClassName === calcFocus);
+    const live = liveIt && (liveIt.CurrentProd > EPS || liveIt.CurrentConsumed > EPS)
+      ? `<div class="card blue"><div class="label">Сейчас на фабрике</div><div class="value">${fmt(liveIt.CurrentProd)}</div><div class="sub">произв./мин · потребл. ${fmt(liveIt.CurrentConsumed)}/мин</div></div>`
+      : "";
+    results = `
+      <div class="cards">
+        <div class="card orange"><div class="label">Нужно станков</div><div class="value">${machines}</div><div class="sub">точно: ${fmt(n)} · ${split}</div></div>
+        <div class="card yellow"><div class="label">Электричество</div><div class="value">${m.mw ? "≈ " + fmt(n * m.mw) + " МВт" : "—"}</div><div class="sub">при такой загрузке</div></div>
+        ${live}
+      </div>
+      <div class="twocol">
+        <div>
+          <h2 style="margin-top:0">📥 Потребуется сырья</h2>
+          <div class="userlist">${r.Ingredients.map(i => `
+            <div class="urow"><div class="utitle">
+              <span>${i.Name}</span>
+              <span class="num"><b>${fmt(i.FactoryRate * n)}</b> /мин</span>
+            </div>
+            ${i.ClassName !== calcFocus || calcMode === "B"
+              ? `<div class="urecipe"><button class="btn-toggle" data-drill="${i.ClassName}" data-need="${i.FactoryRate * n}">🧮 чем это произвести?</button></div>`
+              : ""}</div>`).join("")}</div>
+        </div>
+        <div>
+          <h2 style="margin-top:0">📤 Выход продукции</h2>
+          <div class="userlist">${r.Products.map(p => `
+            <div class="urow"><div class="utitle">
+              <span>${p.Name}</span>
+              <span class="num pos"><b>${fmt(p.FactoryRate * n)}</b> /мин</span>
+            </div></div>`).join("")}</div>
+        </div>
+      </div>`;
+  }
+  body.innerHTML = recipeInfo + inputRow + results;
+
+  document.getElementById("calcRate").addEventListener("input", e2 => {
+    calcRate = parseFloat(e2.target.value) || 0;
+    const el = e2.target;
+    const pos = el.selectionStart;
+    renderCalc();
+    const ne = document.getElementById("calcRate");
+    ne.focus();
+    try { ne.setSelectionRange(pos, pos); } catch (e3) {}
+  });
+  const sel = document.getElementById("calcFocusSel");
+  if (sel) sel.addEventListener("change", e2 => { calcFocus = e2.target.value; renderCalc(); });
+  const back = document.getElementById("calcBack");
+  if (back) back.addEventListener("click", () => {
+    const prev = calcHistory.pop();
+    if (prev) { calcMode = prev.mode; calcRecipe = prev.recipe; calcFocus = prev.focus; calcRate = prev.rate; syncCalcModeBtns(); renderCalc(); }
+  });
+  body.querySelectorAll("button[data-drill]").forEach(b =>
+    b.addEventListener("click", () => drillCalc(b.dataset.drill, +b.dataset.need)));
+}
+
+function syncCalcModeBtns() {
+  document.getElementById("calcModeA").classList.toggle("active", calcMode === "A");
+  document.getElementById("calcModeB").classList.toggle("active", calcMode === "B");
+}
+
+// «чем это произвести?» — проваливаемся к стандартному рецепту нужного ингредиента
+function drillCalc(cls, need) {
+  if (!recipesAll) return;
+  const std = recipesAll.find(r => !isAlt(r) && r.Products.some(p => p.ClassName === cls))
+    || recipesAll.find(r => r.Products.some(p => p.ClassName === cls));
+  if (!std) return;
+  calcHistory.push({ mode: calcMode, recipe: calcRecipe, focus: calcFocus, rate: calcRate });
+  calcMode = "B";
+  syncCalcModeBtns();
+  calcRecipe = std;
+  calcFocus = cls;
+  calcRate = Math.round(need * 100) / 100;
+  renderCalc();
+}
+
+// ---------- запуск ----------
+startPolling();   // сразу получаем данные обычным способом
+connectWS();      // и параллельно поднимаем live-канал (опрос отключится сам)
+
+// PWA: service worker (работает на localhost и на разрешённых через chrome://flags адресах)
+if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+
+// PWA: собственная кнопка установки — надёжнее, чем значок в адресной строке
+let installPrompt = null;
+const installBtn = document.getElementById("installBtn");
+window.addEventListener("beforeinstallprompt", e => {
+  e.preventDefault();
+  installPrompt = e;
+  installBtn.style.display = "";
+});
+installBtn.addEventListener("click", async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  await installPrompt.userChoice.catch(() => {});
+  installPrompt = null;
+  installBtn.style.display = "none";
+});
+window.addEventListener("appinstalled", () => { installBtn.style.display = "none"; });
+</script>
+</body>
+</html>
