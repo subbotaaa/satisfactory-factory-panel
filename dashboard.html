@@ -228,6 +228,8 @@
     <label><input type="checkbox" id="optChat"> 💬 В игровой чат</label>
     <div class="nhint">видно прямо в игре, от имени «Панель»</div>
     <label><input type="checkbox" id="optSound"> 🔊 Звуковой сигнал на этой странице</label>
+    <label style="margin-top:4px"><input type="checkbox" id="optWs"> ⚡ Live-обновления (WebSocket)</label>
+    <div class="nhint">⚠ может крашить игру — известный баг мода (issue #230).<br>Выключено = безопасный опрос раз в 5 секунд</div>
     <button id="notifTestBtn" class="tab" style="margin-top:8px">Отправить тест</button>
     <div class="ntitle" style="margin-top:10px">Управление фабрикой</div>
     <input type="password" id="optToken" placeholder="Токен мода (Authentication Token)"
@@ -495,7 +497,10 @@ async function getJSON(path) {
 // ---------- данные: WebSocket с откатом на опрос ----------
 const ENDPOINTS = ["getProdStats", "getPower", "getGenerators", "getWorldInv", "getFactory", "getExtractor", "getSessionInfo"];
 const cache = {};                // endpoint → последние данные
-let wsAlive = false, wsLastMsg = 0, pollTimer = null, renderQueued = false;
+let wsAlive = false, wsLastMsg = 0, pollTimer = null, renderQueued = false, wsSock = null;
+// live-режим (WebSocket) по умолчанию ВЫКЛЮЧЕН: в моде есть известный баг,
+// из-за которого push-цикл может крашить игру (issue #230 у FicsIt Remote Monitoring)
+const wsEnabled = () => localStorage.getItem("frm_ws") === "on";
 
 function setOnline(ok, live) {
   const dot = document.getElementById("connDot");
@@ -510,9 +515,11 @@ function setOnline(ok, live) {
 }
 
 function connectWS() {
+  if (!wsEnabled()) { startPolling(); return; }
   let sock;
   try { sock = new WebSocket("ws://" + (location.hostname || "localhost") + ":" + API_PORT + "/"); }
   catch (e) { startPolling(); return; }
+  wsSock = sock;
   const dead = setTimeout(() => { try { sock.close(); } catch (e) {} }, 8000);
   sock.onopen = () => {
     clearTimeout(dead);
@@ -535,7 +542,7 @@ function connectWS() {
     clearTimeout(dead);
     if (wsAlive) { wsAlive = false; startPolling(); }
     else if (!pollTimer) startPolling();
-    setTimeout(connectWS, 15000); // пробуем вернуться на live
+    if (wsEnabled()) setTimeout(connectWS, 15000); // пробуем вернуться на live
   };
 }
 // сторож: если live-поток замолчал на 30+ сек — переходим на опрос
@@ -1653,6 +1660,7 @@ function syncNotifPanel() {
   optSound.checked = localStorage.getItem("frm_sound") !== "off";
   document.getElementById("optToken").value = FRM_TOKEN;
   document.getElementById("optApiPort").value = API_PORT;
+  document.getElementById("optWs").checked = wsEnabled();
   if (!window.isSecureContext)
     pushHint.textContent = "недоступно на этом адресе (нужен localhost или флаг в chrome://flags)";
   else if ("Notification" in window && Notification.permission === "denied")
@@ -1693,6 +1701,16 @@ document.getElementById("optToken").addEventListener("input", e => {
 document.getElementById("optApiPort").addEventListener("change", e => {
   const p = String(parseInt(e.target.value, 10) || 8080);
   if (p !== API_PORT) { localStorage.setItem("frm_apiPort", p); location.reload(); }
+});
+document.getElementById("optWs").addEventListener("change", e => {
+  localStorage.setItem("frm_ws", e.target.checked ? "on" : "off");
+  if (e.target.checked) {
+    connectWS();
+  } else {
+    wsAlive = false;
+    try { if (wsSock) wsSock.close(); } catch (err) {}
+    startPolling();
+  }
 });
 syncNotifPanel();
 
