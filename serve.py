@@ -20,6 +20,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 socketserver.ThreadingTCPServer.allow_reuse_address = True
 # 0.0.0.0 — панель доступна и с других устройств локальной сети:
-# http://192.168.1.133:8086/dashboard.html
+# http://<IP-этого-ПК>:8086/dashboard.html
 with socketserver.ThreadingTCPServer(("0.0.0.0", 8086), Handler) as srv:
     srv.serve_forever()
