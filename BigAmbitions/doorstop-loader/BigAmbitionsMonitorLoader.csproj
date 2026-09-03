@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>BigAmbitionsMonitorLoader</AssemblyName>
+    <RootNamespace>BigAmbitionsMonitor</RootNamespace>
+    <Nullable>disable</Nullable>
+    <DebugType>none</DebugType>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GameManagedDir Condition="'$(GameManagedDir)' == ''">D:\Big.Ambitions.v1.0\Big Ambitions\Big Ambitions_Data\Managed</GameManagedDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\shared\SnapshotCollector.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="BigAmbitions"><HintPath>$(GameManagedDir)\BigAmbitions.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="BigAmbitions.Items"><HintPath>$(GameManagedDir)\BigAmbitions.Items.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="BigAmbitions.Characters"><HintPath>$(GameManagedDir)\BigAmbitions.Characters.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="HGExtensions"><HintPath>$(GameManagedDir)\HGExtensions.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="DayNightCycle"><HintPath>$(GameManagedDir)\DayNightCycle.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="HGPlugins"><HintPath>$(GameManagedDir)\HGPlugins.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(GameManagedDir)\UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Newtonsoft.Json"><HintPath>$(GameManagedDir)\Newtonsoft.Json.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+
+</Project>

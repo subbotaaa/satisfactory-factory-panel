@@ -1,0 +1,1654 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Панель бизнесов — Big Ambitions Monitor</title>
+<meta name="theme-color" content="#1d2620">
+<style>
+  :root {
+    --bg: #14161a;
+    --panel: #1d2026;
+    --panel2: #24282f;
+    --border: #32363e;
+    --text: #e8e6e3;
+    --muted: #9a9fa8;
+    --accent: #58c470;
+    --green: #4caf50;
+    --red: #ef5350;
+    --yellow: #ffc94d;
+    --blue: #64b5f6;
+    --orange: #fa9549;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif; font-size: 14px;
+  }
+  header {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 12px 20px; background: var(--panel); border-bottom: 2px solid var(--accent);
+    position: sticky; top: 0; z-index: 10;
+  }
+  header h1 { font-size: 18px; margin: 0; color: var(--accent); white-space: nowrap; }
+  .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+  .tab {
+    padding: 8px 18px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--panel2); color: var(--muted); cursor: pointer; font-size: 14px;
+  }
+  .tab.active { background: var(--accent); color: #12160f; font-weight: 600; border-color: var(--accent); }
+  .tab .badge {
+    display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 6px;
+    border-radius: 9px; background: var(--red); color: #fff; font-size: 11px; font-weight: 700;
+  }
+  .spacer { flex: 1; }
+  .conn { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--red); }
+  .dot.ok { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  main { padding: 16px 20px 40px; max-width: 1400px; margin: 0 auto; }
+  section { display: none; }
+  section.active { display: block; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; }
+  .card .label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .card .value { font-size: 24px; font-weight: 700; }
+  .card .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .card.red .value { color: var(--red); }
+  .card.green .value { color: var(--green); }
+  .card.yellow .value { color: var(--yellow); }
+  .card.blue .value { color: var(--blue); }
+
+  .biz-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+  .biz {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px;
+  }
+  .biz.closed { opacity: .6; }
+  .biz h3 { margin: 0 0 2px; font-size: 16px; }
+  .biz .addr { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+  .biz .row { display: flex; justify-content: space-between; font-size: 13px; margin: 3px 0; }
+  .biz .row .k { color: var(--muted); }
+  .biz .alert-chip {
+    display: inline-block; padding: 1px 8px; border-radius: 9px; font-size: 11px; font-weight: 700;
+    background: var(--red); color: #fff; margin-left: 8px; vertical-align: 2px;
+  }
+  .satbar { display: flex; align-items: center; gap: 8px; margin: 3px 0; font-size: 12px; }
+  .satbar .k { width: 110px; color: var(--muted); }
+  .satbar .track { flex: 1; height: 7px; border-radius: 4px; background: var(--panel2); overflow: hidden; }
+  .satbar .fill { height: 100%; border-radius: 4px; }
+  .satbar .v { width: 34px; text-align: right; }
+  .spark { width: 100%; height: 46px; margin-top: 8px; }
+
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; }
+  th { background: var(--panel2); color: var(--muted); font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .prio-High, .prio-Critical { color: var(--red); font-weight: 700; }
+  .prio-Medium { color: var(--yellow); }
+  .prio-Low { color: var(--muted); }
+  .pos { color: var(--green); }
+  .neg { color: var(--red); }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover td { background: var(--panel2); }
+  tr.clickable.sel td { background: rgba(88,196,112,.12); box-shadow: inset 2px 0 0 var(--accent); }
+
+  .toolbar { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+  .toolbar input, .toolbar select {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 7px 10px; font-size: 13px;
+  }
+  .chart-box { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; }
+  .chart-box h3 { margin: 0 0 10px; font-size: 14px; color: var(--muted); }
+  .chart-box canvas { width: 100%; height: 220px; }
+  h2 { font-size: 16px; margin: 20px 0 10px; }
+  .empty { color: var(--muted); padding: 24px; text-align: center; }
+
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .seg-btn { padding: 7px 14px; cursor: pointer; font-size: 13px; color: var(--muted); background: var(--panel2); }
+  .seg-btn.active { background: var(--accent); color: #12160f; font-weight: 600; }
+
+  /* Сетка расписания */
+  .sched { overflow-x: auto; }
+  .sched table { min-width: 720px; }
+  .sched th, .sched td { padding: 2px 4px; text-align: center; border: 1px solid var(--border); font-size: 11px; }
+  .sched .dname { text-align: left; white-space: nowrap; font-weight: 600; padding: 4px 8px; }
+  .cell { height: 24px; }
+  .cell.closed { background: #16181c; }
+  .cell.open { background: #23312a; }
+  .cell.gap { background: rgba(239,83,80,.35); }
+  .cell.cov { background: var(--accent); color: #12160f; font-weight: 700; }
+  .emp-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .emp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+  .hbar { height: 7px; border-radius: 4px; background: var(--panel2); overflow: hidden; margin-top: 4px; }
+  .hbar > div { height: 100%; }
+  .chip { display: inline-block; padding: 1px 7px; border-radius: 9px; font-size: 11px; background: var(--panel2); color: var(--muted); margin: 1px 2px; }
+  .plan-in { width: 54px; background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 3px; text-align: center; font-size: 12px; }
+  .skills { margin-top: 8px; display: flex; flex-direction: column; gap: 3px; }
+  .skill-row { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .skill-row .sk-name { width: 108px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .skill-row .sk-track { flex: 1; height: 6px; border-radius: 3px; background: var(--panel2); overflow: hidden; }
+  .skill-row .sk-fill { display: block; height: 100%; border-radius: 3px; }
+  .skill-row .sk-val { width: 24px; text-align: right; font-variant-numeric: tabular-nums; }
+  .warn { color: var(--red); font-weight: 700; }
+  .ok { color: var(--green); }
+  tr.dim td { opacity: .45; }
+  tr.absent td { background: rgba(255,201,77,.06); }
+  .plan-in:disabled { opacity: .35; cursor: not-allowed; }
+  .plan-in.wide { width: 118px; }
+  .tab.disabled { opacity: .45; cursor: not-allowed; }
+  .btn-blue { background: var(--blue); color: #0b1520; border-color: var(--blue); font-weight: 600; }
+  .delta-up { color: var(--green); } .delta-down { color: var(--red); }
+  .mini { font-size: 11px; color: var(--muted); }
+  .risk-high td { background: rgba(239,83,80,.08); }
+  .traffic { width: 100%; height: 70px; }
+  td.num input.plan-in { width: 64px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>💼 Big Ambitions</h1>
+  <div class="tabs">
+    <div class="tab active" data-tab="overview">Обзор</div>
+    <div class="tab" data-tab="businesses">Бизнесы</div>
+    <div class="tab" data-tab="problems">Проблемы<span class="badge" id="problemsBadge" style="display:none">0</span></div>
+    <div class="tab" data-tab="inventory">Склад</div>
+    <div class="tab" data-tab="purchase">Закупки</div>
+    <div class="tab" data-tab="sales">Продажи</div>
+    <div class="tab" data-tab="analytics">Аналитика</div>
+    <div class="tab" data-tab="prices">Цены</div>
+    <div class="tab" data-tab="staff">Сотрудники</div>
+    <div class="tab" data-tab="hr">Кадры<span class="badge" id="hrBadge" style="display:none">0</span></div>
+    <div class="tab" data-tab="network">Сеть</div>
+    <div class="tab" data-tab="finances">Финансы</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="conn"><span id="gameClock"></span><div class="dot" id="connDot"></div><span id="connText">нет связи</span></div>
+</header>
+<main>
+  <section id="overview" class="active">
+    <div class="cards" id="overviewCards"></div>
+    <div class="chart-box"><h3>Прибыль по дням (все бизнесы)</h3><canvas id="profitChart"></canvas></div>
+    <h2>Требуют внимания</h2>
+    <div id="overviewProblems"></div>
+  </section>
+
+  <section id="businesses">
+    <div class="biz-grid" id="bizGrid"></div>
+  </section>
+
+  <section id="problems">
+    <div id="problemsList"></div>
+  </section>
+
+  <section id="inventory">
+    <div class="toolbar">
+      <select id="invBuilding"></select>
+      <input id="invFilter" type="text" placeholder="Фильтр по товару...">
+    </div>
+    <div id="invTables"></div>
+  </section>
+
+  <section id="purchase">
+    <div class="toolbar">
+      <select id="purchaseBuilding"></select>
+      <label style="font-size:12px;color:var(--muted)">Запас на дней: <input id="purchaseDays" class="plan-in" type="number" min="1" max="30" value="7"></label>
+      <select id="purchaseWholesaler"></select>
+    </div>
+    <div id="purchaseView"></div>
+  </section>
+
+  <section id="analytics">
+    <div class="toolbar"><select id="analyticsBuilding"></select></div>
+    <div id="analyticsView"></div>
+  </section>
+
+  <section id="prices">
+    <div class="toolbar"><select id="pricesBuilding"></select></div>
+    <div id="pricesView"></div>
+  </section>
+
+  <section id="hr">
+    <div id="hrView"></div>
+  </section>
+
+  <section id="network">
+    <div id="networkView"></div>
+  </section>
+
+  <section id="sales">
+    <div class="toolbar">
+      <select id="salesBuilding"></select>
+      <input id="salesFilter" type="text" placeholder="Фильтр по товару...">
+    </div>
+    <div id="salesTables"></div>
+  </section>
+
+  <section id="staff">
+    <div class="toolbar">
+      <select id="staffBuilding"></select>
+      <div class="seg">
+        <span class="seg-btn active" data-staffview="view">Просмотр</span>
+        <span class="seg-btn" data-staffview="planner">Планировщик</span>
+      </div>
+    </div>
+    <div id="staffView"></div>
+    <div id="staffPlanner" style="display:none"></div>
+  </section>
+
+  <section id="finances">
+    <div class="chart-box"><h3>Недельный доход игрока</h3><canvas id="weeklyChart"></canvas></div>
+    <h2>Отчёт за последний день</h2>
+    <div id="pnlTable"></div>
+  </section>
+</main>
+
+<script>
+const API = new URLSearchParams(location.search).get('api') || (location.protocol.startsWith('http') ? '' : 'http://localhost:8113');
+let snap = null;
+let invBuildingSel = '__all__';
+let salesBuildingSel = '__all__';
+let salesSel = {}; // bkey -> выбранный товар для графика
+let staffBuildingSel = null;
+let staffViewMode = 'view';
+let purchaseBuildingSel = null, purchaseWholesalerSel = null, analyticsBuildingSel = null, pricesBuildingSel = null;
+let priceEdits = {}; // bkey -> { item: price }
+const bkeyOf = (b) => b.street + '|' + b.number;
+function bizName(b) { return b.name || pretty(b.type) || 'Здание'; }
+function fillBuildingSelect(sel, list, current) {
+  sel.innerHTML = list.map(b => `<option value="${esc(bkeyOf(b))}">${esc(bizName(b))} (${esc(addr(b))})</option>`).join('');
+  const keys = list.map(bkeyOf);
+  const val = keys.includes(current) ? current : keys[0];
+  if (val) sel.value = val;
+  return list.find(b => bkeyOf(b) === val);
+}
+async function postJson(path, body) {
+  const r = await fetch(API + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  return r.json();
+}
+let staffRoleSel = '__all__'; // должность (навык) для авто-распределения/применения
+let staffPlan = loadPlan(); // { bkey: { empId: { dayIndex: hours } } }
+
+const DAY_RU = { Monday:'Пн', Tuesday:'Вт', Wednesday:'Ср', Thursday:'Чт', Friday:'Пт', Saturday:'Сб', Sunday:'Вс' };
+function dayRu(name) { return DAY_RU[name] || name; }
+function loadPlan() { try { return JSON.parse(localStorage.getItem('ba_plan') || '{}'); } catch (e) { return {}; } }
+function savePlan() { try { localStorage.setItem('ba_plan', JSON.stringify(staffPlan)); } catch (e) {} }
+
+/* ---------- helpers ---------- */
+function fmtMoney(v) {
+  const sign = v < 0 ? '-' : '';
+  v = Math.abs(v || 0);
+  let s;
+  if (v >= 1e6) s = (v / 1e6).toFixed(2) + ' млн';
+  else if (v >= 1e4) s = (v / 1e3).toFixed(1) + ' тыс';
+  else s = v.toFixed(0);
+  return sign + '$' + s;
+}
+function pretty(key) {
+  if (!key) return '—';
+  let s = String(key);
+  const i = s.indexOf(':');
+  if (i >= 0) s = s.slice(i + 1);
+  s = s.replace(/^(itemname_|businesstype_|street_)/, '');
+  s = s.replace(/_/g, ' ');
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+function addr(b) { return pretty(b.street) + ', ' + b.number; }
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function satColor(v) { return v >= 70 ? 'var(--green)' : v >= 40 ? 'var(--yellow)' : 'var(--red)'; }
+
+const PROBLEM_NAMES = {
+  LowStock: 'Мало товара', EmptyStock: 'Товар закончился', DirtyFloors: 'Грязный пол',
+  PayTaxes: 'Оплатить налоги', EmployeeIdle: 'Сотрудник простаивает', LowHunger: 'Голод',
+  LowHealth: 'Низкое здоровье', UnhappyEmployee: 'Недовольный сотрудник',
+  BrokenFurniture: 'Сломанная мебель', MissingRequiredItem: 'Не хватает оборудования',
+  MissingSchedule: 'Нет расписания', NoProducers: 'Нет производителей',
+  EmployeeUnassigned: 'Сотрудник не назначен', BusinessTemporarilyClosed: 'Бизнес закрыт',
+  MissingRequiredItemCount: 'Мало оборудования', UnpaidLicensingFees: 'Неоплаченные лицензии',
+};
+function problemName(t) { return PROBLEM_NAMES[t] || t; }
+
+/* ---------- charts (canvas, без библиотек) ---------- */
+function drawBars(canvas, points, colorFn) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (!w || !h) return;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+  if (!points.length) return;
+  const padB = 18, padT = 12;
+  const vals = points.map(p => p.v);
+  const max = Math.max(...vals, 0), min = Math.min(...vals, 0);
+  const range = (max - min) || 1;
+  const y0 = padT + (max / range) * (h - padT - padB);
+  const bw = Math.max(3, Math.min(40, (w - 10) / points.length - 3));
+  ctx.strokeStyle = 'rgba(154,159,168,.35)';
+  ctx.beginPath(); ctx.moveTo(0, y0); ctx.lineTo(w, y0); ctx.stroke();
+  ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  points.forEach((p, i) => {
+    const x = 5 + i * ((w - 10) / points.length) + ((w - 10) / points.length - bw) / 2;
+    const bh = Math.abs(p.v) / range * (h - padT - padB);
+    ctx.fillStyle = colorFn ? colorFn(p.v) : (p.v >= 0 ? '#4caf50' : '#ef5350');
+    if (p.v >= 0) ctx.fillRect(x, y0 - bh, bw, Math.max(1, bh));
+    else ctx.fillRect(x, y0, bw, Math.max(1, bh));
+    if (points.length <= 31 && p.label != null) {
+      ctx.fillStyle = 'rgba(154,159,168,.8)';
+      ctx.fillText(String(p.label), x + bw / 2, h - 4);
+    }
+  });
+}
+
+/* ---------- rendering ---------- */
+function renderOverview() {
+  const g = snap.game;
+  const businesses = snap.businesses.filter(b => b.hasBusiness);
+  const problems = snap.problems;
+  const lastDay = snap.finances.dailySummaries.at(-1);
+  const cards = [
+    { label: 'Наличные', value: fmtMoney(g.money), cls: g.money >= 0 ? 'green' : 'red' },
+    { label: 'Капитал', value: fmtMoney(g.netWorth), cls: 'blue' },
+    { label: 'Бизнесов', value: businesses.length, sub: snap.businesses.length - businesses.length + ' зданий без бизнеса', cls: '' },
+    { label: 'Проблем', value: problems.length, cls: problems.length ? 'red' : 'green' },
+    { label: 'Прибыль за день ' + (lastDay ? lastDay.day : '—'), value: lastDay ? fmtMoney(lastDay.totalProfit) : '—', cls: lastDay && lastDay.totalProfit >= 0 ? 'green' : 'red' },
+  ];
+  document.getElementById('overviewCards').innerHTML = cards.map(c =>
+    `<div class="card ${c.cls}"><div class="label">${c.label}</div><div class="value">${c.value}</div>${c.sub ? `<div class="sub">${c.sub}</div>` : ''}</div>`
+  ).join('');
+
+  drawBars(document.getElementById('profitChart'),
+    snap.finances.dailySummaries.map(s => ({ label: s.day, v: s.totalProfit })));
+
+  const top = problems.filter(p => p.priority === 'High' || p.priority === 'Critical').slice(0, 10);
+  document.getElementById('overviewProblems').innerHTML = top.length
+    ? problemsTable(top)
+    : '<div class="empty">Срочных проблем нет 🎉</div>';
+}
+
+function spark(b) {
+  return `<canvas class="spark" data-biz="${esc(b.street)}|${b.number}"></canvas>`;
+}
+
+function renderBusinesses() {
+  const grid = document.getElementById('bizGrid');
+  const list = snap.businesses.filter(b => b.hasBusiness);
+  if (!list.length) { grid.innerHTML = '<div class="empty">Нет бизнесов</div>'; return; }
+  grid.innerHTML = list.map(b => {
+    const s = b.satisfaction || {};
+    const lastOrder = (b.orderDays || []).at(-1);
+    return `<div class="biz ${b.temporarilyClosed ? 'closed' : ''}">
+      <h3>${esc(b.name || pretty(b.type))}${b.alerts ? `<span class="alert-chip">⚠ ${b.alerts}</span>` : ''}</h3>
+      <div class="addr">${esc(pretty(b.type))} · ${esc(addr(b))}${b.temporarilyClosed ? ' · <b style="color:var(--red)">ЗАКРЫТ</b>' : ''}</div>
+      <div class="row"><span class="k">Средний доход/день (7д)</span><b class="${b.avgDailyIncome >= 0 ? 'pos' : 'neg'}">${fmtMoney(b.avgDailyIncome)}</b></div>
+      <div class="row"><span class="k">Покупателей вчера</span><b>${lastOrder ? lastOrder.customers : '—'}</b></div>
+      <div class="row"><span class="k">Выручка вчера</span><b>${lastOrder ? fmtMoney(lastOrder.revenue) : '—'}</b></div>
+      <div class="row"><span class="k">Сотрудников</span><b>${b.employees}</b></div>
+      <div class="row"><span class="k">Аренда/день</span><b>${fmtMoney(b.rentPerDay)}</b></div>
+      ${['overall|Общая', 'customerService|Обслуживание', 'pricing|Цены', 'cleanliness|Чистота', 'facility|Помещение'].map(x => {
+        const [k, label] = x.split('|'); const v = s[k] ?? 0;
+        return `<div class="satbar"><span class="k">${label}</span><div class="track"><div class="fill" style="width:${v}%;background:${satColor(v)}"></div></div><span class="v">${v}</span></div>`;
+      }).join('')}
+      ${spark(b)}
+    </div>`;
+  }).join('');
+
+  grid.querySelectorAll('canvas.spark').forEach(cv => {
+    const [street, number] = cv.dataset.biz.split('|');
+    const b = list.find(x => x.street === street && String(x.number) === number);
+    if (b) drawBars(cv, (b.dailyIncomes || []).map((v, i) => ({ v })));
+  });
+}
+
+function problemsTable(list) {
+  return `<table><thead><tr><th>Проблема</th><th>Приоритет</th><th>Где</th><th>Товар</th><th class="num">Осталось дней</th></tr></thead><tbody>` +
+    list.map(p => `<tr>
+      <td>${esc(problemName(p.type))}</td>
+      <td class="prio-${esc(p.priority)}">${esc(p.priority)}</td>
+      <td>${p.street ? esc(pretty(p.street) + ', ' + p.number) : '—'}</td>
+      <td>${p.item ? esc(pretty(p.item)) : '—'}</td>
+      <td class="num">${p.remainingDays ?? '—'}</td>
+    </tr>`).join('') + '</tbody></table>';
+}
+
+function renderProblems() {
+  const el = document.getElementById('problemsList');
+  const order = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+  const list = [...snap.problems].sort((a, b) => (order[a.priority] ?? 9) - (order[b.priority] ?? 9));
+  el.innerHTML = list.length ? problemsTable(list) : '<div class="empty">Проблем нет 🎉</div>';
+  const badge = document.getElementById('problemsBadge');
+  badge.style.display = list.length ? '' : 'none';
+  badge.textContent = list.length;
+}
+
+function renderInventory() {
+  const sel = document.getElementById('invBuilding');
+  const buildings = snap.businesses.filter(b => (b.inventory || []).length);
+  const options = [`<option value="__all__">Все здания</option>`]
+    .concat(buildings.map(b => {
+      const key = b.street + '|' + b.number;
+      const name = b.name || pretty(b.type) || 'Здание';
+      return `<option value="${esc(key)}">${esc(name)} (${esc(addr(b))})</option>`;
+    }));
+  sel.innerHTML = options.join('');
+  sel.value = [...sel.options].some(o => o.value === invBuildingSel) ? invBuildingSel : '__all__';
+
+  const filter = document.getElementById('invFilter').value.trim().toLowerCase();
+  const shown = buildings.filter(b => sel.value === '__all__' || b.street + '|' + b.number === sel.value);
+  document.getElementById('invTables').innerHTML = shown.map(b => {
+    const rows = (b.inventory || [])
+      .filter(r => !filter || itemName(r).toLowerCase().includes(filter))
+      .map(r => `<tr>
+        <td>${esc(itemName(r))}</td>
+        <td class="num">${r.amount}</td>
+        <td class="num">${fmtMoney(r.value)}</td>
+        <td class="num">${r.soldPerDay ? r.soldPerDay : '—'}</td>
+        <td class="num">${daysLeftCell(r)}</td>
+      </tr>`)
+      .join('');
+    if (!rows) return '';
+    const total = (b.inventory || []).reduce((s, r) => s + r.value, 0);
+    return `<h2>${esc(b.name || pretty(b.type))} · ${esc(addr(b))} <span style="color:var(--muted);font-size:13px">(итого ${fmtMoney(total)})</span></h2>
+      <table><thead><tr>
+        <th>Товар</th><th class="num">Кол-во</th><th class="num">Стоимость закупки</th>
+        <th class="num">Продаётся/день</th><th class="num">Хватит на</th>
+      </tr></thead><tbody>${rows}</tbody></table>`;
+  }).join('') || '<div class="empty">Ничего не найдено</div>';
+}
+
+function itemName(r) { return r.name || pretty(r.item); }
+
+function daysLeftCell(r) {
+  if (r.daysLeft == null) return '<span style="color:var(--muted)">—</span>';
+  const d = r.daysLeft;
+  const color = d <= 3 ? 'var(--red)' : d <= 7 ? 'var(--yellow)' : 'var(--green)';
+  const label = d < 1 ? '<1 дня' : d < 100 ? d + ' дн.' : d + ' дн.';
+  return `<b style="color:${color}">${label}</b>`;
+}
+
+function renderSales() {
+  const sel = document.getElementById('salesBuilding');
+  const buildings = snap.businesses.filter(b => (b.sales || []).length);
+  const options = [`<option value="__all__">Все здания</option>`]
+    .concat(buildings.map(b => {
+      const key = b.street + '|' + b.number;
+      const name = b.name || pretty(b.type) || 'Здание';
+      return `<option value="${esc(key)}">${esc(name)} (${esc(addr(b))})</option>`;
+    }));
+  sel.innerHTML = options.join('');
+  sel.value = [...sel.options].some(o => o.value === salesBuildingSel) ? salesBuildingSel : '__all__';
+
+  const filter = document.getElementById('salesFilter').value.trim().toLowerCase();
+  const shown = buildings.filter(b => sel.value === '__all__' || b.street + '|' + b.number === sel.value);
+  document.getElementById('salesTables').innerHTML = shown.map(b => {
+    const bkey = b.street + '|' + b.number;
+    const rows = (b.sales || [])
+      .filter(r => !filter || itemName(r).toLowerCase().includes(filter))
+      .map(r => {
+        const active = salesSel[bkey] === r.item;
+        return `<tr class="clickable ${active ? 'sel' : ''}" data-b="${esc(bkey)}" data-item="${esc(r.item)}">
+        <td>${esc(itemName(r))}</td>
+        <td class="num">${r.sold}</td>
+        <td class="num">${r.perDay}</td>
+        <td class="num">${fmtMoney(r.revenue)}</td>
+        <td class="num ${r.profit >= 0 ? 'pos' : 'neg'}">${fmtMoney(r.profit)}</td>
+      </tr>`;
+      })
+      .join('');
+    if (!rows) return '';
+    const rev = (b.sales || []).reduce((s, r) => s + r.revenue, 0);
+    const prof = (b.sales || []).reduce((s, r) => s + r.profit, 0);
+    // График по выбранному товару (или первому в списке)
+    const shownSales = (b.sales || []).filter(r => !filter || itemName(r).toLowerCase().includes(filter));
+    const selItem = salesSel[bkey] && shownSales.some(r => r.item === salesSel[bkey])
+      ? salesSel[bkey] : (shownSales[0] && shownSales[0].item);
+    const selSale = shownSales.find(r => r.item === selItem);
+    const chart = selSale
+      ? `<div class="chart-box"><h3>Продажи по дням: ${esc(itemName(selSale))} <span style="color:var(--muted)">(нажмите на товар в таблице)</span></h3>
+         <canvas class="sales-day-chart" data-b="${esc(bkey)}"></canvas></div>`
+      : '';
+    return `<h2>${esc(b.name || pretty(b.type))} · ${esc(addr(b))}
+      <span style="color:var(--muted);font-size:13px">(за 7 дней: выручка ${fmtMoney(rev)}, прибыль ${fmtMoney(prof)})</span></h2>
+      ${chart}
+      <table><thead><tr>
+        <th>Товар</th><th class="num">Продано (7д)</th><th class="num">Штук/день</th>
+        <th class="num">Выручка</th><th class="num">Прибыль</th>
+      </tr></thead><tbody>${rows}</tbody></table>`;
+  }).join('') || '<div class="empty">Продаж пока нет</div>';
+
+  // Рисуем графики продаж по дням для выбранного товара каждого здания
+  document.querySelectorAll('#salesTables canvas.sales-day-chart').forEach(cv => {
+    const bkey = cv.dataset.b;
+    const b = snap.businesses.find(x => x.street + '|' + x.number === bkey);
+    if (!b) return;
+    const shownSales = (b.sales || []).filter(r => !filter || itemName(r).toLowerCase().includes(filter));
+    const selItem = salesSel[bkey] && shownSales.some(r => r.item === salesSel[bkey])
+      ? salesSel[bkey] : (shownSales[0] && shownSales[0].item);
+    const sale = shownSales.find(r => r.item === selItem);
+    if (sale && sale.daily) drawBars(cv, sale.daily.map(d => ({ label: d.day, v: d.sold })), () => '#58c470');
+  });
+
+  // Клик по строке товара — выбрать товар для графика
+  document.querySelectorAll('#salesTables tr.clickable').forEach(tr => {
+    tr.addEventListener('click', () => { salesSel[tr.dataset.b] = tr.dataset.item; renderSales(); });
+  });
+}
+
+/* ---------- Сотрудники и расписание ---------- */
+function staffBuildings() {
+  return snap.businesses.filter(b => b.staff && (
+    (b.staff.employees || []).length || (b.staff.scheduleDays || []).length));
+}
+
+function renderStaff() {
+  const sel = document.getElementById('staffBuilding');
+  const buildings = staffBuildings();
+  sel.innerHTML = buildings.map(b => {
+    const key = b.street + '|' + b.number;
+    return `<option value="${esc(key)}">${esc(b.name || pretty(b.type))} (${esc(addr(b))})</option>`;
+  }).join('');
+  if (!buildings.length) {
+    document.getElementById('staffView').innerHTML = '<div class="empty">Нет данных о сотрудниках</div>';
+    document.getElementById('staffPlanner').innerHTML = '';
+    return;
+  }
+  if (!staffBuildingSel || !buildings.some(b => b.street + '|' + b.number === staffBuildingSel))
+    staffBuildingSel = buildings[0].street + '|' + buildings[0].number;
+  sel.value = staffBuildingSel;
+  const b = buildings.find(x => x.street + '|' + x.number === staffBuildingSel);
+
+  const viewEl = document.getElementById('staffView');
+  const planEl = document.getElementById('staffPlanner');
+  if (staffViewMode === 'planner') {
+    viewEl.style.display = 'none'; planEl.style.display = '';
+    renderStaffPlanner(b, planEl);
+  } else {
+    viewEl.style.display = ''; planEl.style.display = 'none';
+    renderStaffView(b, viewEl);
+  }
+}
+
+function skillColor(v) { return v >= 66 ? 'var(--green)' : v >= 33 ? 'var(--yellow)' : 'var(--red)'; }
+function constraintNote(e) {
+  const c = e.constraints; if (!c) return '';
+  const parts = [];
+  if ((c.freeDays || []).length) parts.push('🚫 ' + c.freeDays.map(dayRu).join(','));
+  if ((c.noShiftHours || []).length) parts.push('⛔ ' + c.noShiftHours.map(r => r.from + '–' + r.to).join(','));
+  if (c.daysPerWeek) parts.push('📅 ' + c.daysPerWeek + ' дн.');
+  if (noCleaningOf(e)) parts.push('🚫🧹');
+  return parts.length ? ` <span style="color:var(--red)">· ${esc(parts.join(' '))}</span>` : '';
+}
+function constraintChips(e) {
+  const c = e.constraints; if (!c && !e.absent) return '';
+  const chips = [];
+  if (e.absent) chips.push(`<span class="chip" style="color:var(--yellow)">🤒 на больничном${e.replaced ? ' (есть замена)' : ''}</span>`);
+  if (!c) return `<div style="margin-top:4px">${chips.join('')}</div>`;
+  (c.freeDays || []).forEach(d => chips.push(`<span class="chip" style="color:var(--red)">🚫 свободен: ${esc(dayRu(d))}</span>`));
+  (c.noShiftHours || []).forEach(r => chips.push(`<span class="chip" style="color:var(--red)">⛔ не работает ${r.from}–${r.to}</span>`));
+  if (c.daysPerWeek) chips.push(`<span class="chip" style="color:var(--yellow)">📅 ровно ${c.daysPerWeek} дн./нед.</span>`);
+  if (noCleaningOf(e)) chips.push(`<span class="chip" style="color:var(--red)">🚫🧹 без смен по уборке</span>`);
+  if (c.maxHours != null) chips.push(`<span class="chip">макс. ${c.maxHours} ч/нед</span>`);
+  return chips.length ? `<div style="margin-top:4px">${chips.join('')}</div>` : '';
+}
+function skillsBlock(skills) {
+  if (!skills || !skills.length) return '';
+  const rows = [...skills].sort((a, b) => b.value - a.value).map(s => `
+    <div class="skill-row"><span class="sk-name">${esc(s.name)}</span>
+      <span class="sk-track"><span class="sk-fill" style="width:${Math.max(2, s.value)}%;background:${skillColor(s.value)}"></span></span>
+      <span class="sk-val">${s.value}</span></div>`).join('');
+  return `<div class="skills">${rows}</div>`;
+}
+
+function hourRange(days) {
+  let min = 24, max = 0;
+  days.forEach(d => (d.open || []).forEach(s => { min = Math.min(min, s.from); max = Math.max(max, s.to); }));
+  days.forEach(d => (d.shifts || []).forEach(s => { min = Math.min(min, s.from); max = Math.max(max, s.to); }));
+  if (min >= max) { min = 8; max = 22; }
+  return [Math.max(0, min), Math.min(24, max)];
+}
+
+function renderStaffView(b, el) {
+  const st = b.staff;
+  const days = [...(st.scheduleDays || [])].sort((a, c) => a.dayIndex - c.dayIndex);
+  const [h0, h1] = hourRange(days);
+  const hours = []; for (let h = h0; h < h1; h++) hours.push(h);
+
+  const isOpen = (d, h) => (d.open || []).some(s => h >= s.from && h < s.to);
+  const shiftAt = (d, h) => (d.shifts || []).find(s => h >= s.from && h < s.to);
+
+  let grid = `<div class="sched"><table><thead><tr><th class="dname">День</th>` +
+    hours.map(h => `<th>${h}</th>`).join('') + `<th>Часы</th></tr></thead><tbody>`;
+  let totalOpen = 0, totalGap = 0;
+  days.forEach(d => {
+    grid += `<tr><td class="dname">${esc(dayRu(d.day))}</td>`;
+    hours.forEach(h => {
+      if (!isOpen(d, h)) { grid += `<td class="cell closed"></td>`; return; }
+      totalOpen++;
+      const s = shiftAt(d, h);
+      if (s) { grid += `<td class="cell cov" title="${esc((s.employee || '?') + (s.zone ? ' · ' + s.zone : ''))}">${esc((s.employee || '•')[0] || '•')}</td>`; }
+      else { totalGap++; grid += `<td class="cell gap" title="Открыто, но нет сотрудника"></td>`; }
+    });
+    grid += `<td>${d.hoursOpen || 0}</td></tr>`;
+  });
+  grid += `</tbody></table></div>`;
+
+  const coverage = totalOpen > 0 ? Math.round((totalOpen - totalGap) / totalOpen * 100) : 100;
+  const covColor = coverage >= 90 ? 'var(--green)' : coverage >= 60 ? 'var(--yellow)' : 'var(--red)';
+
+  const emps = (st.employees || []).map(e => {
+    const pct = e.weeklyHours > 0 ? Math.min(100, Math.round(e.workedThisWeek / e.weeklyHours * 100)) : 0;
+    return `<div class="emp-card">
+      <div style="display:flex;justify-content:space-between"><b>${esc(e.name)}</b><span style="color:var(--muted)">${esc(e.skill || '')}</span></div>
+      <div class="row"><span class="k" style="color:var(--muted)">Ставка</span> <b>${fmtMoney(e.wage)}/ч</b></div>
+      ${skillsBlock(e.skills)}
+      <div style="font-size:12px;color:var(--muted);margin-top:6px">Часы за неделю: ${e.workedThisWeek} / ${e.weeklyHours}</div>
+      <div class="hbar"><div style="width:${pct}%;background:${pct >= 100 ? 'var(--red)' : 'var(--accent)'}"></div></div>
+      <div style="margin-top:6px">${(e.days || []).map(d => `<span class="chip">${esc(dayRu(d))}</span>`).join('') || '<span style="color:var(--muted);font-size:12px">дни не назначены</span>'}</div>
+      ${(e.zones || []).length ? `<div style="margin-top:4px">${e.zones.map(z => `<span class="chip">📍 ${esc(z)}</span>`).join('')}</div>` : ''}
+      ${constraintChips(e)}
+      ${(e.demands || []).length ? `<div style="margin-top:4px">${e.demands.map(z => `<span class="chip">❗ ${esc(z)}</span>`).join('')}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  const req = (st.required || []).map(r => `<span class="chip">${esc(r.skill)}: ${r.hours} ч</span>`).join('') ||
+    '<span style="color:var(--muted)">нет данных</span>';
+
+  el.innerHTML = `
+    <h2>Расписание и покрытие сменами
+      <span style="font-size:13px;color:${covColor}">(покрытие ${coverage}%${totalGap ? ', пробелов: ' + totalGap + ' ч' : ''})</span></h2>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px">🟩 смена · 🟥 открыто без сотрудника · тёмное — закрыто. Наведите на клетку для деталей.</div>
+    ${grid}
+    <h2>Требуемый состав по навыкам</h2><div>${req}</div>
+    <h2>Сотрудники (${(st.employees || []).length})</h2>
+    <div class="emp-grid">${emps || '<div class="empty">Нет сотрудников</div>'}</div>`;
+}
+
+/* Смена хранится строкой "9-16"; парсим в {from,to}. */
+// Смена «9–16»; уборочный визит не-уборщика помечается 🧹: «16–18🧹» (в игру уходит как Cleaning на станцию уборки)
+function parseShift(str) {
+  if (!str) return null;
+  const m = String(str).replace('–', '-').match(/(\d{1,2})\s*-\s*(\d{1,2})/);
+  if (!m) return null;
+  let from = Math.max(0, Math.min(24, +m[1])), to = Math.max(0, Math.min(24, +m[2]));
+  if (to <= from) return null;
+  return /🧹|\bc\b/i.test(String(str)) ? { from, to, clean: true } : { from, to };
+}
+function fmtShift(sh) { return sh ? `${sh.from}–${sh.to}${sh.clean ? '🧹' : ''}` : ''; }
+/* Несколько смен в день: "5–7, 17–19" */
+function parseShifts(str) { if (!str) return []; return String(str).split(/[,;]/).map(parseShift).filter(Boolean).sort((a, c) => a.from - c.from); }
+function fmtShifts(list) { return [...(list || [])].sort((a, c) => a.from - c.from).map(fmtShift).join(', '); }
+function hoursOf(list) { return (list || []).reduce((s, sh) => s + (sh.to - sh.from), 0); }
+function dayWindow(d) {
+  const open = d.open || [];
+  if (!open.length) return null;
+  return { from: Math.min(...open.map(o => o.from)), to: Math.max(...open.map(o => o.to)) };
+}
+
+/* Желаемый график магазина (задаётся в планировщике, хранится в браузере по зданию).
+   null = «как в игре». Если задан — планируем все 7 дней в этом окне, а в игру записываем
+   только те часы, что реально закрыты сменами обслуживания; остальные становятся закрытыми. */
+let storeHours = {}; try { storeHours = JSON.parse(localStorage.getItem('ba_hours') || '{}') || {}; } catch (e) { storeHours = {}; }
+function saveStoreHours() { try { localStorage.setItem('ba_hours', JSON.stringify(storeHours)); } catch (e) {} }
+function desiredWindow(bkey) { const h = storeHours[bkey]; return (h && h.to > h.from) ? { from: h.from, to: h.to } : null; }
+function planWindow(b, d) {
+  const dw = desiredWindow(b.street + '|' + b.number);
+  if (dw) return { from: dw.from, to: dw.to };
+  return d.isOpen ? dayWindow(d) : null;
+}
+// Плановые часы работы по дням: часы желаемого окна, закрытые сменами не-уборщиков.
+// Незакрытый час → магазин закрыт; день без смен → выходной.
+function plannedOpening(b) {
+  const bkey = b.street + '|' + b.number, dw = desiredWindow(bkey);
+  if (!dw) return null;
+  const plan = staffPlan[bkey] || {};
+  const emps = (b.staff.employees || []).filter(e => !isCleaningRole(roleOf(e)));
+  // Индексы дней берём из игры (нумерация enum не обязательно 0–6).
+  const dayDefs = (b.staff.scheduleDays || []).length ? b.staff.scheduleDays.map(d => ({ di: d.dayIndex, day: d.day }))
+    : [0, 1, 2, 3, 4, 5, 6].map(i => ({ di: i, day: ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][i] }));
+  return dayDefs.map(({ di, day }) => {
+    const cov = new Set();
+    emps.forEach(e => parseShifts((plan[e.id] || {})[di]).filter(sh => !sh.clean).forEach(sh => { for (let h = Math.max(sh.from, dw.from); h < Math.min(sh.to, dw.to); h++) cov.add(h); }));
+    const slots = []; let cur = null;
+    for (let h = dw.from; h <= dw.to; h++) {
+      const on = h < dw.to && cov.has(h);
+      if (on && cur == null) cur = h;
+      if (!on && cur != null) { slots.push({ from: cur, to: h }); cur = null; }
+    }
+    return { dayIndex: di, day, isOpen: slots.length > 0, slots };
+  });
+}
+
+/* Особенности сотрудника */
+function serviceValue(e) { const s = (e.skills || []).find(x => /обслуж|service|servic/i.test(x.name)); return s ? s.value : 0; }
+function maxHoursOf(e) { return (e.constraints && e.constraints.maxHours != null) ? e.constraints.maxHours : (e.weeklyHours || 40); }
+function minHoursOf(e) { return (e.constraints && e.constraints.minHours != null) ? e.constraints.minHours : 0; }
+function daysPerWeekOf(e) { return (e.constraints && e.constraints.daysPerWeek) || 0; } // требование «ровно N дней в неделю»
+// «Без смен по уборке»: из ограничений (новая DLL) либо по тексту требования (старая DLL)
+function noCleaningOf(e) {
+  if (e.constraints && e.constraints.noCleaning != null) return !!e.constraints.noCleaning;
+  return (e.demands || []).some(d => /убор|clean/i.test(d));
+}
+function freeDaysOf(e) { return new Set((e.constraints && e.constraints.freeDays) || []); }
+function noShiftOf(e) { return (e.constraints && e.constraints.noShiftHours) || []; }
+function canWork(e, dayName, hour) {
+  if (freeDaysOf(e).has(dayName)) return false;
+  if (noShiftOf(e).some(r => hour >= r.from && hour < r.to)) return false;
+  return true;
+}
+
+// Авто-распределение по сменам: приоритет сотрудникам с высшим навыком обслуживания,
+// учёт особенностей (свободные дни, макс. часов из требований, запретные часы смен).
+function roleOf(e) { return e.skill || '—'; }
+function isAvailable(e) { return !e.absent; } // на больничном — не ставим
+function roleEmployees(b, role) {
+  return (b.staff.employees || []).filter(e => role === '__all__' || roleOf(e) === role);
+}
+
+// Авто-распределение ТОЛЬКО для выбранной должности: план остальных сотрудников не трогаем.
+// Этап 1: раздать НЕДЕЛЬНЫЕ часы — каждому не меньше его минимума (полная занятость = 30–50),
+//         остаток в первую очередь сотрудникам с высоким навыком обслуживания, до их максимума.
+// Этап 2: разложить эти часы по дням равномерно (по «срочности» = остаток/оставшиеся дни),
+//         покрывая окно открытия целиком, с учётом свободных дней, запретных часов, макс. смены.
+function autoDistributePlan(b, role) {
+  const st = b.staff, bkey = b.street + '|' + b.number;
+  role = role || '__all__';
+  const HARD_MAX = 12; // абсолютный потолок одной смены, ч; реальная длина подбирается из недельной цели
+  const emps = roleEmployees(b, role).filter(isAvailable);
+  if (!emps.length) return;
+  const days = [...(st.scheduleDays || [])].sort((a, c) => a.dayIndex - c.dayIndex)
+    .filter(d => planWindow(b, d));
+  if (!days.length) return;
+
+  // Трафик по часам (среднее за 7 дней) — для приоритета пиковых часов и второго кассира.
+  const traffic = (b.trafficByHour && b.trafficByHour.length === 24) ? b.trafficByHour : null;
+  const registers = registersFor(b, role);
+  const hourWeight = (h) => traffic ? (traffic[h] || 0) : 1;
+  const peak = traffic ? Math.max(...traffic) : 0;
+  // Сколько кассиров нужно в час: 1 всегда, 2 — в пиковые часы (≥70% от пика), если касс ≥ 2.
+  const needAt = (h) => (traffic && registers >= 2 && peak > 0 && (traffic[h] || 0) >= peak * 0.7) ? 2 : 1;
+  const dayNeed = (d) => { const w = planWindow(b, d); let s = 0; for (let h = w.from; h < w.to; h++) s += needAt(h); return s; };
+  // Потребность недели = часы открытия + второй кассир на пиках (а не просто однократное покрытие).
+  const totalNeed = days.reduce((s, d) => s + dayNeed(d), 0);
+
+  // --- Этап 1: недельные цели ---
+  const workable = {}; // сколько открытых дней сотрудник вообще может работать
+  emps.forEach(e => workable[e.id] = Math.min(days.filter(d => !freeDaysOf(e).has(d.day)).length, daysPerWeekOf(e) || 99));
+  const feasMax = {}; // реальный максимум: лимит часов, но не больше (рабочих дней × потолок смены)
+  emps.forEach(e => feasMax[e.id] = Math.min(maxHoursOf(e), workable[e.id] * HARD_MAX));
+  const target = {};
+  emps.forEach(e => target[e.id] = Math.min(minHoursOf(e), feasMax[e.id]));
+  let assigned = emps.reduce((s, e) => s + target[e.id], 0);
+  if (assigned > totalNeed && assigned > 0) { // минимумы больше, чем нужно часов — ужимаем пропорционально
+    emps.forEach(e => target[e.id] = Math.floor(target[e.id] * totalNeed / assigned));
+    assigned = emps.reduce((s, e) => s + target[e.id], 0);
+  }
+  // Остаток — лучшим по обслуживанию, до их реального максимума. Раскладка по дням теряет часть часов
+  // (лимит смены, запретные часы, края окна), поэтому закладываем запас +15%: цели чуть выше потребности,
+  // а лишнее просто не разместится (в день ставим не больше, чем нужно кассиров).
+  // …но не больше, чем физически влезает: часы окна × число рабочих мест должности (одна касса — один человек в час).
+  const placeable = days.reduce((s, d) => { const w = planWindow(b, d); return s + (w.to - w.from) * registers; }, 0);
+  let remainingNeed = Math.min(Math.ceil(totalNeed * 1.15), placeable) - assigned;
+  [...emps].sort((a, c) => serviceValue(c) - serviceValue(a) || feasMax[c.id] - feasMax[a.id]).forEach(e => {
+    if (remainingNeed <= 0) return;
+    const add = Math.min(feasMax[e.id] - target[e.id], remainingNeed);
+    if (add > 0) { target[e.id] += add; remainingNeed -= add; }
+  });
+
+  // --- Этап 2: раскладка по дням ---
+  const rem = {}; emps.forEach(e => rem[e.id] = target[e.id]);
+  const daysLeft = {}; emps.forEach(e => daysLeft[e.id] = workable[e.id]);
+  // Требование «ровно N рабочих дней в неделю»: считаем использованные дни и не ставим сверх N.
+  const daysUsed = {}, daysCap = {}; emps.forEach(e => { daysUsed[e.id] = 0; daysCap[e.id] = daysPerWeekOf(e) || Infinity; });
+
+  // сохраняем план других должностей; перестраиваем только целевых сотрудников
+  const plan = Object.assign({}, staffPlan[bkey] || {});
+  emps.forEach(e => delete plan[e.id]);
+
+  days.forEach(d => {
+    const w = planWindow(b, d), dayName = d.day;
+    let tFrom = w.from, tTo = w.to;
+    // Если часов на всё окно не хватит (бюджет < окна) — покрываем самый прибыльный непрерывный отрезок
+    // (по трафику), а не просто центр дня.
+    const budgetLeft = emps.reduce((s, e) => s + rem[e.id], 0);
+    const daysLeftAll = days.filter(x => x.dayIndex >= d.dayIndex).length;
+    const perDayBudget = daysLeftAll ? budgetLeft / daysLeftAll : 0;
+    if (traffic && perDayBudget < (w.to - w.from) && perDayBudget >= 1) {
+      const len = Math.max(1, Math.floor(perDayBudget));
+      let best = w.from, bestSum = -1;
+      for (let s = w.from; s + len <= w.to; s++) { let sum = 0; for (let h = s; h < s + len; h++) sum += hourWeight(h); if (sum > bestSum) { bestSum = sum; best = s; } }
+      tFrom = best; tTo = best + len;
+    }
+    const windowLen = tTo - tFrom;
+    // Потребность и покрытие по часам дня: need = сколько кассиров нужно, cov = сколько уже стоит.
+    const need = {}, cov = {};
+    for (let h = tFrom; h < tTo; h++) { need[h] = needAt(h); cov[h] = 0; }
+    // Кандидаты дня: есть часы, день не свободный, лимит рабочих дней (ровно N в неделю) не исчерпан.
+    const avail = emps.filter(e => rem[e.id] > 0 && !freeDaysOf(e).has(dayName) && daysUsed[e.id] < daysCap[e.id]);
+    // Длина смены — из недельной цели: остаток / оставшиеся дни (+1 запас), не длиннее потолка;
+    // если суммы этих долей не хватает на окно (напр. выходные без Rick) — разрешаем всем до потолка.
+    const fair = {}; avail.forEach(e => fair[e.id] = Math.min(HARD_MAX, Math.ceil(rem[e.id] / Math.max(1, daysLeft[e.id])) + 1));
+    const fairSum = avail.reduce((s, e) => s + fair[e.id], 0);
+    const cap = {}; avail.forEach(e => cap[e.id] = fairSum < windowLen ? HARD_MAX : fair[e.id]);
+
+    const usedToday = {};
+    const shiftOf = (e) => parseShift((plan[e.id] || {})[d.dayIndex]);
+    const setShift = (e, sh) => { plan[e.id] = plan[e.id] || {}; plan[e.id][d.dayIndex] = fmtShift(sh); };
+    // Сначала те, кто отстаёт от своего МИНИМУМА часов (минимум — требование сотрудника, его нельзя
+    // нарушать), затем срочность = остаток / оставшиеся дни, затем навык обслуживания.
+    const minUrg = (e) => Math.max(0, minHoursOf(e) - (target[e.id] - rem[e.id])) / Math.max(1, daysLeft[e.id]);
+    const byUrgency = (a, c) => minUrg(c) - minUrg(a) || (rem[c.id] / Math.max(1, daysLeft[c.id])) - (rem[a.id] / Math.max(1, daysLeft[a.id])) || serviceValue(c) - serviceValue(a);
+    const byService = (a, c) => minUrg(c) - minUrg(a) || serviceValue(c) - serviceValue(a) || byUrgency(a, c);
+    const byServiceOnly = (a, c) => serviceValue(c) - serviceValue(a) || byUrgency(a, c);
+    // В загруженные часы (≥50% от пика) ставим лучших по обслуживанию, в тихие — кому нужнее часы.
+    const busy = (h) => traffic && peak > 0 && hourWeight(h) >= peak * 0.5;
+
+    // Через полночь: если вчера смена сотрудника кончилась в 24, а сегодня окно с 0 — это одна
+    // непрерывная смена, вчерашний хвост вычитаем из сегодняшнего лимита длины.
+    const prevD = days.find(x => x.dayIndex === d.dayIndex - 1);
+    const prevTail = (e) => { if (!prevD || tFrom !== 0) return 0; const sh = parseShifts((plan[e.id] || {})[prevD.dayIndex]).find(s => s.to === 24); return sh ? sh.to - sh.from : 0; };
+    const MIN_SHIFT = 3;
+
+    // Слой 1 — базовое покрытие всего окна; слой 2 — второй кассир на пиковых часах
+    // (лучшие по обслуживанию). Одна смена в день на человека, смена не длиннее макс.
+    for (let layer = 1; layer <= 2; layer++) {
+      const want = (h) => Math.min(layer, need[h]);
+      let cur = tFrom;
+      while (cur < tTo) {
+        if (cov[cur] >= want(cur)) { cur++; continue; }
+        // Хвост дня короче MIN_SHIFT — не заводим новую смену, а продлеваем ту, что кончается сейчас.
+        if (layer === 1 && tTo - cur < MIN_SHIFT) {
+          const ext = avail.map(e => ({ e, sh: shiftOf(e) })).find(x => x.sh && x.sh.to === cur && rem[x.e.id] > 0 && (x.sh.to - x.sh.from) < HARD_MAX && canWork(x.e, dayName, cur));
+          if (ext) { ext.sh.to = cur + 1; setShift(ext.e, ext.sh); cov[cur]++; rem[ext.e.id]--; cur++; continue; }
+        }
+        const cands = avail.filter(e => !usedToday[e.id] && rem[e.id] > 0 && canWork(e, dayName, cur))
+          .sort(layer === 2 ? byServiceOnly : busy(cur) ? byService : byUrgency);
+        if (!cands.length) { cur++; continue; } // некому покрыть этот час — пробел (добьём продлением ниже)
+        // Длина смены кандидата с этого часа; берём первого по приоритету, у кого выходит ≥ MIN_SHIFT
+        // (чтобы не плодить огрызки по часу), иначе — самого длинного из первых пяти.
+        const lenFor = (e) => { const lim = cap[e.id] - (cur === 0 ? prevTail(e) : 0); let l = 0; while (cur + l < tTo && l < lim && l < rem[e.id] && canWork(e, dayName, cur + l) && cov[cur + l] < want(cur + l)) l++; return l; };
+        let cand = cands.find(e => lenFor(e) >= MIN_SHIFT) || cands.slice(0, 5).sort((a, c) => lenFor(c) - lenFor(a))[0];
+        let len = lenFor(cand);
+        if (len <= 0) { usedToday[cand.id] = true; continue; }
+        if (layer === 2 && len < 2) { cur++; continue; } // второму кассиру — не короче 2 ч
+        setShift(cand, { from: cur, to: cur + len });
+        for (let h = cur; h < cur + len; h++) cov[h]++;
+        rem[cand.id] -= len; usedToday[cand.id] = true; cur += len;
+      }
+    }
+    // Добивка недокрытых часов: продлеваем соседнюю смену (у кого есть остаток и смена короче макс.)
+    for (let pass = 0; pass < 4; pass++) {
+      let progressed = false;
+      for (let h = tFrom; h < tTo; h++) {
+        if (cov[h] >= need[h]) continue;
+        const ext = avail.map(e => ({ e, sh: shiftOf(e) }))
+          .filter(x => x.sh && rem[x.e.id] > 0 && (x.sh.to - x.sh.from) < HARD_MAX && canWork(x.e, dayName, h) && (x.sh.to === h || x.sh.from === h + 1))
+          .sort((a, c) => rem[c.e.id] - rem[a.e.id])[0];
+        if (!ext) continue;
+        if (ext.sh.to === h) ext.sh.to = h + 1; else ext.sh.from = h;
+        setShift(ext.e, ext.sh); cov[h]++; rem[ext.e.id]--; progressed = true;
+      }
+      if (!progressed) break;
+    }
+    // Слой 3 — разрывные смены: базовые часы всё ещё не закрыты (все уже отработали свою смену
+    // по максимуму), но часы у людей остались — даём вторую смену в тот же день с перерывом ≥1 ч.
+    for (let cur = tFrom; cur < tTo;) {
+      if (cov[cur] >= 1) { cur++; continue; }
+      const apart = (own, h) => own.every(sh => h >= sh.to + 1 || h < sh.from - 1);
+      const cands = avail.filter(e => rem[e.id] > 0 && canWork(e, dayName, cur) && apart(parseShifts((plan[e.id] || {})[d.dayIndex]), cur))
+        .sort((a, c) => rem[c.id] - rem[a.id] || serviceValue(c) - serviceValue(a));
+      if (!cands.length) { cur++; continue; }
+      const lenFor = (e) => { const o = parseShifts((plan[e.id] || {})[d.dayIndex]); const lim = HARD_MAX - (cur === 0 ? prevTail(e) : 0); let l = 0; while (cur + l < tTo && l < lim && l < rem[e.id] && canWork(e, dayName, cur + l) && cov[cur + l] < 1 && apart(o, cur + l)) l++; return l; };
+      // предпочитаем того, у кого вторая смена выйдет не короче 2 ч
+      const cand = cands.find(e => lenFor(e) >= 2) || cands.slice(0, 5).sort((a, c) => lenFor(c) - lenFor(a))[0];
+      const own = parseShifts((plan[cand.id] || {})[d.dayIndex]);
+      const len = lenFor(cand);
+      if (len <= 0) { cur++; continue; }
+      own.push({ from: cur, to: cur + len }); own.sort((a, c) => a.from - c.from);
+      plan[cand.id] = plan[cand.id] || {}; plan[cand.id][d.dayIndex] = fmtShifts(own);
+      for (let h = cur; h < cur + len; h++) cov[h]++;
+      rem[cand.id] -= len; cur += len;
+    }
+    avail.forEach(e => {
+      const worked = parseShifts((plan[e.id] || {})[d.dayIndex]).length > 0;
+      if (worked) daysUsed[e.id]++;
+      // у сотрудника с «ровно N дней» оставшиеся дни уменьшаются только отработанными днями
+      if (worked || daysCap[e.id] === Infinity) daysLeft[e.id] = Math.max(0, daysLeft[e.id] - 1);
+    });
+  });
+  staffPlan[bkey] = plan;
+  savePlan();
+}
+
+function isCleaningRole(role) { return /убор|clean/i.test(role || ''); }
+// Число рабочих мест под должность (по навыкам места из игры). Шкафчик охранника — не касса.
+// Пока DLL не отдаёт навыки мест — считаем всё, что не уборка (старое поведение).
+function registersFor(b, role) {
+  const ws = b.workstations || [];
+  if (ws.some(w => Array.isArray(w.skills))) {
+    const n = ws.filter(w => !w.cleaning && (role === '__all__' || !role ? true : (w.skills || []).includes(role))).length;
+    return n || 1;
+  }
+  return ws.filter(w => !w.cleaning && !/охран|guard|locker|шкаф/i.test(w.name || '')).length || 1;
+}
+
+// Уборка: короткие визиты (1–2 ч) равномерно по дню и по всем открытым дням;
+// несколько уборщиков — визиты по очереди (поровну). Пришёл — убрал — ушёл.
+function autoDistributeCleaning(b, role, visitsPerDay, visitLen) {
+  const st = b.staff, bkey = b.street + '|' + b.number;
+  const emps = roleEmployees(b, role).filter(isAvailable);
+  if (!emps.length) return;
+  const days = [...(st.scheduleDays || [])].sort((a, c) => a.dayIndex - c.dayIndex).filter(d => planWindow(b, d));
+  if (!days.length) return;
+  visitLen = Math.max(1, Math.min(4, +visitLen || 2));
+  visitsPerDay = Math.max(1, +visitsPerDay || 2);
+
+  const plan = Object.assign({}, staffPlan[bkey] || {});
+  emps.forEach(e => delete plan[e.id]);
+  const wk = {}; emps.forEach(e => wk[e.id] = 0);
+  const visitsOf = (e, di) => parseShifts((plan[e.id] || {})[di]);
+  // все уборки дня: визиты уборщиков + уборочные визиты (🧹) остальных сотрудников
+  const others = (st.employees || []).filter(e => !emps.includes(e));
+  const allVisits = (di) => emps.flatMap(e => visitsOf(e, di)).concat(others.flatMap(e => parseShifts((plan[e.id] || {})[di]).filter(s => s.clean)));
+  const fits = (e, dayName, from, to) => { for (let h = from; h < to; h++) if (!canWork(e, dayName, h)) return false; return true; };
+  const put = (e, d, from, to) => { const l = visitsOf(e, d.dayIndex); l.push({ from, to }); plan[e.id] = plan[e.id] || {}; plan[e.id][d.dayIndex] = fmtShifts(l); wk[e.id] += to - from; };
+
+  // 1) равномерные слоты в окне дня; уборщики берут слоты по кругу
+  let rr = 0;
+  days.forEach(d => {
+    const w = planWindow(b, d), len = w.to - w.from;
+    const k = Math.max(1, Math.min(visitsPerDay, Math.floor(len / visitLen)));
+    for (let i = 0; i < k; i++) {
+      let from = Math.round(w.from + (i + 0.5) * len / k - visitLen / 2);
+      from = Math.max(w.from, Math.min(w.to - visitLen, from));
+      const to = from + visitLen;
+      if (allVisits(d.dayIndex).some(s => s.from < to && from < s.to)) continue; // слот занят чужой уборкой
+      for (let t = 0; t < emps.length; t++) {
+        const e = emps[(rr + t) % emps.length];
+        if (freeDaysOf(e).has(d.day) || !fits(e, d.day, from, to)) continue;
+        if (wk[e.id] + visitLen > maxHoursOf(e)) continue;
+        if (visitsOf(e, d.dayIndex).some(s => s.from < to && from < s.to)) continue;
+        put(e, d, from, to); rr = (rr + t + 1) % emps.length; break;
+      }
+    }
+  });
+
+  // 2) добор до минимума часов: доп. визит в самый большой свободный промежуток дня
+  emps.forEach(e => {
+    let guard = 0;
+    while (wk[e.id] < minHoursOf(e) && wk[e.id] + visitLen <= maxHoursOf(e) && guard++ < 40) {
+      let best = null;
+      days.forEach(d => {
+        if (freeDaysOf(e).has(d.day)) return;
+        const w = planWindow(b, d);
+        const busy = allVisits(d.dayIndex).sort((a, c) => a.from - c.from);
+        let prev = w.from; const gaps = [];
+        busy.forEach(s => { if (s.from > prev) gaps.push([prev, s.from]); prev = Math.max(prev, s.to); });
+        if (w.to > prev) gaps.push([prev, w.to]);
+        gaps.forEach(g => { const gl = g[1] - g[0]; if (gl >= visitLen && (!best || gl > best.gl)) best = { d, g, gl }; });
+      });
+      if (!best) break;
+      const c = Math.round((best.g[0] + best.g[1]) / 2 - visitLen / 2);
+      const from = Math.max(best.g[0], Math.min(best.g[1] - visitLen, c)), to = from + visitLen;
+      if (!fits(e, best.d.day, from, to)) { guard += 10; continue; }
+      put(e, best.d, from, to);
+    }
+  });
+
+  staffPlan[bkey] = plan;
+  savePlan();
+}
+
+// Незанятые часы (до максимума) не-уборщиков — на уборку короткими визитами в дни, когда сотрудник
+// и так работает (рабочих дней не добавляем). Кроме тех, у кого требование «без смен по уборке».
+// Визит не пересекается ни со своими сменами, ни с чужими уборками (станция уборки одна).
+function fillCleaningWithSpare(b, role, vlen) {
+  const bkey = b.street + '|' + b.number;
+  const plan = staffPlan[bkey] = staffPlan[bkey] || {};
+  vlen = Math.max(1, Math.min(4, +vlen || 2));
+  const days = [...(b.staff.scheduleDays || [])].sort((a, c) => a.dayIndex - c.dayIndex).filter(d => planWindow(b, d));
+  const all = b.staff.employees || [];
+  const emps = roleEmployees(b, role).filter(isAvailable).filter(e => !isCleaningRole(roleOf(e)) && !noCleaningOf(e));
+  const shiftsOf = (e, di) => parseShifts((plan[e.id] || {})[di]);
+  const weekHours = (e) => days.reduce((s, d) => s + hoursOf(shiftsOf(e, d.dayIndex)), 0);
+  const cleanBusy = (di) => all.flatMap(e => shiftsOf(e, di).filter(sh => sh.clean || isCleaningRole(roleOf(e))));
+  const overlaps = (list, from, to) => list.some(s => s.from < to && from < s.to);
+  let added = 0;
+  emps.forEach(e => {
+    let spare = maxHoursOf(e) - weekHours(e);
+    for (const d of days) {
+      if (spare < vlen) break;
+      const own = shiftsOf(e, d.dayIndex);
+      if (!own.length) continue;
+      const w = planWindow(b, d), busy = cleanBusy(d.dayIndex);
+      let best = null;
+      for (let s = w.from; s + vlen <= w.to; s++) {
+        const t = s + vlen;
+        if (overlaps(own, s, t) || overlaps(busy, s, t)) continue;
+        let ok = true; for (let h = s; h < t; h++) if (!canWork(e, d.day, h)) { ok = false; break; }
+        if (!ok) continue;
+        // ближе к своей смене — лучше: пришёл пораньше или задержался после
+        const dist = Math.min(...own.map(o => Math.min(Math.abs(o.from - t), Math.abs(s - o.to))));
+        if (!best || dist < best.dist) best = { s, t, dist };
+      }
+      if (!best) continue;
+      own.push({ from: best.s, to: best.t, clean: true });
+      plan[e.id][d.dayIndex] = fmtShifts(own); spare -= vlen; added++;
+    }
+  });
+  savePlan();
+  return added;
+}
+
+// Диспетчер: у каждой должности свой алгоритм (уборка — визиты, остальные — смены покрытия).
+function autoDistribute(b, role) {
+  const vpd = +(localStorage.getItem('ba_cleanVisits') || 2), vlen = +(localStorage.getItem('ba_cleanLen') || 2);
+  const roles = role === '__all__' ? [...new Set((b.staff.employees || []).map(roleOf))] : [role];
+  roles.forEach(r => isCleaningRole(r) ? autoDistributeCleaning(b, r, vpd, vlen) : autoDistributePlan(b, r));
+  if (localStorage.getItem('ba_fillClean') === '1' && !isCleaningRole(role)) fillCleaningWithSpare(b, role, vlen);
+}
+
+function renderStaffPlanner(b, el) {
+  const st = b.staff;
+  const bkey = b.street + '|' + b.number;
+  const days = [...(st.scheduleDays || [])].sort((a, c) => a.dayIndex - c.dayIndex);
+  const dayList = days.length ? days : [0,1,2,3,4,5,6].map(i => ({ day: ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][i], dayIndex: i, open: [], hoursOpen: 0 }));
+  // Часы, которые надо покрыть: желаемое окно (если задано) или часы открытия из игры.
+  const dw = desiredWindow(bkey);
+  const openHoursByDay = {}; dayList.forEach(d => openHoursByDay[d.dayIndex] = dw ? (dw.to - dw.from) : (d.open || []).reduce((s, o) => s + (o.to - o.from), 0));
+
+  staffPlan[bkey] = staffPlan[bkey] || {};
+  const plan = staffPlan[bkey];
+  const emps = st.employees || [];
+  const vpd = +(localStorage.getItem('ba_cleanVisits') || 2), vlen = +(localStorage.getItem('ba_cleanLen') || 2);
+  const cleaningMode = isCleaningRole(staffRoleSel);
+
+  // Покрытые часы дня из смен всех сотрудников (в пределах окна открытия)
+  const coveredHours = (dayIndex) => {
+    const set = new Set();
+    // покрытие магазина = смены обслуживания: уборщиков и уборочные визиты (🧹) не считаем
+    emps.filter(e => !isCleaningRole(roleOf(e))).forEach(e => parseShifts((plan[e.id] || {})[dayIndex]).filter(sh => !sh.clean).forEach(sh => { for (let h = sh.from; h < sh.to; h++) set.add(h); }));
+    const d = dayList.find(x => x.dayIndex === dayIndex);
+    // считаем в пределах желаемого окна (если задано) либо часов открытия из игры
+    const ranges = dw ? [dw] : (d ? d.open || [] : []);
+    let inOpen = 0; ranges.forEach(o => { for (let h = o.from; h < o.to; h++) if (set.has(h)) inOpen++; });
+    return inOpen;
+  };
+
+  let head = `<tr><th class="dname">Сотрудник</th>` + dayList.map(d => `<th>${esc(dayRu(d.day))}</th>`).join('') +
+    `<th>Ставка</th><th>Часы/нед</th><th>Мин–Макс</th><th>Стоимость</th></tr>`;
+  let rows = emps.map(e => {
+    const p = plan[e.id] = plan[e.id] || {};
+    const free = freeDaysOf(e);
+    const inRole = staffRoleSel === '__all__' || roleOf(e) === staffRoleSel;
+    let wk = 0;
+    const cells = dayList.map(d => {
+      const list = parseShifts(p[d.dayIndex]); wk += hoursOf(list);
+      const blocked = free.has(d.day);
+      const dis = e.absent ? 'disabled title="На больничном — не планируем"' : '';
+      return `<td><input class="plan-in ${list.length > 1 ? 'wide' : ''}" type="text" placeholder="${e.absent ? '🤒' : blocked ? '🚫' : '—'}" ${blocked ? 'title="Сотрудник свободен в этот день" style="opacity:.5"' : ''} ${dis} data-emp="${esc(e.id)}" data-day="${d.dayIndex}" value="${fmtShifts(list)}"></td>`;
+    }).join('');
+    const max = maxHoursOf(e), min = minHoursOf(e);
+    const bad = wk > max || (wk > 0 && wk < min) || (wk === 0 && min > 0 && !e.absent && inRole);
+    const cost = wk * e.wage;
+    return `<tr class="${inRole ? '' : 'dim'} ${e.absent ? 'absent' : ''}"><td class="dname">${esc(e.name)}${e.absent ? ' <span class="chip" style="color:var(--yellow)">🤒 больничный</span>' : ''}<div style="font-size:11px;color:var(--muted)">${esc(e.skill || '')}${constraintNote(e)}</div></td>
+      ${cells}
+      <td>${fmtMoney(e.wage)}</td>
+      <td class="${bad ? 'warn' : 'ok'}" title="${wk < min ? 'меньше минимума' : wk > max ? 'больше максимума' : ''}">${wk}</td>
+      <td>${min > 0 ? min + '–' : ''}${max}</td>
+      <td>${fmtMoney(cost)}</td></tr>`;
+  }).join('');
+
+  let totalCost = 0; emps.forEach(e => { const p = plan[e.id] || {}; dayList.forEach(d => { totalCost += hoursOf(parseShifts(p[d.dayIndex])) * e.wage; }); });
+  const dayTotals = dayList.map(d => {
+    if (cleaningMode) { // для уборки важны визиты, а не покрытие часов
+      const n = roleEmployees(b, staffRoleSel).reduce((s, e) => s + parseShifts((plan[e.id] || {})[d.dayIndex]).length, 0);
+      return `<td style="color:${n ? 'var(--green)' : 'var(--muted)'}">${n}</td>`;
+    }
+    const cov = coveredHours(d.dayIndex);
+    const need = openHoursByDay[d.dayIndex] || 0;
+    const color = need === 0 ? 'var(--muted)' : cov >= need ? 'var(--green)' : 'var(--red)';
+    return `<td style="color:${color}">${cov}/${need}</td>`;
+  }).join('');
+  let foot = `<tr style="border-top:2px solid var(--accent)"><td class="dname">${cleaningMode ? 'Визитов уборки/день' : 'Покрыто/открыто, ч'}</td>${dayTotals}<td colspan="2"></td><td>Итого нед.</td><td>${fmtMoney(totalCost)}</td></tr>`;
+  // Плановые часы работы магазина (из смен обслуживания в желаемом окне); ✎ — отличается от игры.
+  const po = cleaningMode ? null : plannedOpening(b);
+  if (po) foot += `<tr><td class="dname">🕒 Часы магазина (план)</td>${dayList.map(d => {
+      const p = po.find(x => x.dayIndex === d.dayIndex);
+      const curTxt = d.isOpen ? ((d.open || []).map(o => o.from + '–' + o.to).join(', ') || '—') : 'закрыт';
+      const txt = p && p.isOpen ? p.slots.map(s => s.from + '–' + s.to).join(', ') : 'закрыт';
+      const color = !p || !p.isOpen ? 'var(--red)' : (p.slots.length === 1 && p.slots[0].from === dw.from && p.slots[0].to === dw.to) ? 'var(--green)' : 'var(--yellow)';
+      return `<td style="color:${color}" title="сейчас в игре: ${esc(curTxt)}">${txt}${txt === curTxt ? '' : ' <span class="mini">✎</span>'}</td>`;
+    }).join('')}<td colspan="4" class="mini">запишется в игру вместе со сменами</td></tr>`;
+
+  const plannedBySkill = {};
+  emps.forEach(e => { const p = plan[e.id] || {}; let h = 0; dayList.forEach(d => { h += hoursOf(parseShifts(p[d.dayIndex])); }); const sk = e.skill || '—'; plannedBySkill[sk] = (plannedBySkill[sk] || 0) + h; });
+  const skillCov = (st.required || []).map(r => {
+    const have = plannedBySkill[r.skill] || 0;
+    const ok = have >= r.hours;
+    return `<span class="chip" style="color:${ok ? 'var(--green)' : 'var(--red)'}">${esc(r.skill)}: ${have}/${r.hours} ч</span>`;
+  }).join('') || '<span style="color:var(--muted)">нет требований</span>';
+
+  const totalOpen = dayList.reduce((s, d) => s + (openHoursByDay[d.dayIndex] || 0), 0);
+  const totalCov = dayList.reduce((s, d) => s + coveredHours(d.dayIndex), 0);
+  const covPct = totalOpen ? Math.round(totalCov / totalOpen * 100) : 0;
+
+  // Должности = уникальные основные навыки сотрудников
+  const roles = [...new Set(emps.map(roleOf))];
+  if (staffRoleSel !== '__all__' && !roles.includes(staffRoleSel)) staffRoleSel = '__all__';
+  const roleOptions = [`<option value="__all__" ${staffRoleSel === '__all__' ? 'selected' : ''}>Все должности</option>`]
+    .concat(roles.map(r => `<option value="${esc(r)}" ${staffRoleSel === r ? 'selected' : ''}>${esc(r)}</option>`)).join('');
+  const roleLabel = staffRoleSel === '__all__' ? 'все' : staffRoleSel;
+  const canWrite = !!(snap.game && snap.game.canWrite);
+
+  el.innerHTML = `
+    <h2>Планировщик смен · ${esc(b.name || pretty(b.type))}
+      <span style="font-size:13px;color:${covPct >= 90 ? 'var(--green)' : covPct >= 60 ? 'var(--yellow)' : 'var(--red)'}">(покрытие ${covPct}%)</span></h2>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+      <label style="font-size:12px;color:var(--muted)">Должность:
+        <select id="roleSel" class="plan-in" style="width:auto">${roleOptions}</select></label>
+      ${cleaningMode ? '' : (() => {
+        const presets = ['0-24', '8-20', '9-21', '10-22', '8-22'];
+        const cur = dw ? `${dw.from}-${dw.to}` : '';
+        const mode = !dw ? '' : (presets.includes(cur) ? cur : 'custom');
+        return `<label style="font-size:12px;color:var(--muted)">🕒 График магазина:
+        <select id="hoursPreset" class="plan-in" style="width:auto">
+          <option value="" ${mode === '' ? 'selected' : ''}>как в игре</option>
+          ${presets.map(p => `<option value="${p}" ${mode === p ? 'selected' : ''}>${p === '0-24' ? '24/7' : p.replace('-', '–')}</option>`).join('')}
+          <option value="custom" ${mode === 'custom' ? 'selected' : ''}>свой…</option>
+        </select></label>
+        <span id="hoursCustom" style="font-size:12px;color:var(--muted);${mode === 'custom' ? '' : 'display:none'}">с <input id="hoursFrom" class="plan-in" type="number" min="0" max="23" value="${dw ? dw.from : 8}"> до <input id="hoursTo" class="plan-in" type="number" min="1" max="24" value="${dw ? dw.to : 20}"></span>`;
+      })()}
+      <span class="tab active" style="padding:8px 16px" id="planAuto">⚡ Распределить (${esc(roleLabel)})</span>
+      ${cleaningMode ? '' : `<label style="font-size:12px;color:var(--muted)" title="Незанятые часы (до максимума) — короткие уборочные визиты в дни, когда сотрудник и так работает. Кроме тех, у кого требование «без смен по уборке»."><input type="checkbox" id="fillCleanIn" ${localStorage.getItem('ba_fillClean') === '1' ? 'checked' : ''}> 🧹 свободные часы — на уборку</label>`}
+      ${(cleaningMode || staffRoleSel === '__all__') ? `<label style="font-size:12px;color:var(--muted)">🧹 Визитов/день: <input id="cleanVisitsIn" class="plan-in" type="number" min="1" max="12" value="${vpd}"></label>
+      <label style="font-size:12px;color:var(--muted)">Визит, ч: <input id="cleanLenIn" class="plan-in" type="number" min="1" max="4" value="${vlen}"></label>` : ''}
+      <span class="tab" style="padding:8px 14px" id="planReset">Очистить (${esc(roleLabel)})</span>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+      <span class="tab ${canWrite ? '' : 'disabled'}" style="padding:8px 16px;${canWrite ? 'background:var(--blue);color:#0b1520;border-color:var(--blue);font-weight:600' : ''}" id="planApply">💾 Применить в игре (${esc(roleLabel)})</span>
+      <span id="applyStatus" style="font-size:12px;color:var(--muted)">${canWrite ? 'Заменит в игре смены только выбранной должности.' : 'Запись в игру недоступна: нет связи с главным потоком игры.'}</span>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Смены в формате «9–16»; несколько за день — через запятую: «5–7, 17–19». 🕒 График магазина: задай желаемые часы (например 24/7 или 8–20) — распределение пойдёт под них, а при применении в игру запишутся и часы работы: только те, что закрыты сменами обслуживания; остальные часы и дни без смен станут закрытыми. Авто-распределение работает по выбранной должности и не трогает остальных. Обслуживание: полное покрытие часов открытия плюс второй кассир на пиковых часах (если касс ≥ 2); часы сверх минимума в первую очередь лучшим по навыку обслуживания, вплоть до их максимума. 🧹 Уборка: короткие визиты равномерно по дню и по всем дням, несколько уборщиков — по очереди поровну. Галочка «свободные часы — на уборку»: незанятые до максимума часы продавцов уходят в уборочные визиты (помечены 🧹) в их рабочие дни, кроме сотрудников с требованием «без смен по уборке». Длина смен подбирается автоматически (до 12 ч) из недельной цели и рабочих дней сотрудника; в загруженные часы ставятся лучшие по обслуживанию. Учитываются лимит часов, число рабочих дней, свободные дни, запретные часы и больничные (🤒). Красным — нарушение лимита или нехватка покрытия.</div>
+    ${(b.trafficByHour && b.trafficByHour.some(v => v > 0)) ? `<div class="chart-box" style="padding:8px 12px"><h3 style="margin:0 0 4px">Покупатели по часам (среднее за 7 дн.) · мест для «${esc(staffRoleSel === '__all__' ? 'обслуживания' : staffRoleSel)}»: ${registersFor(b, staffRoleSel)}</h3><canvas class="traffic" id="trafficChart"></canvas></div>` : ''}
+    <div class="sched"><table><thead>${head}</thead><tbody>${rows}${foot}</tbody></table></div>
+    <h2>Покрытие по навыкам (план / требуется за неделю)</h2><div>${skillCov}</div>`;
+  const tc = el.querySelector('#trafficChart');
+  if (tc) drawBars(tc, (b.trafficByHour || []).map((v, h) => ({ label: h, v })), () => '#64b5f6');
+
+  el.querySelectorAll('input.plan-in[data-emp]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const emp = inp.dataset.emp, day = inp.dataset.day;
+      const list = parseShifts(inp.value);
+      staffPlan[bkey][emp] = staffPlan[bkey][emp] || {};
+      staffPlan[bkey][emp][day] = fmtShifts(list);
+      savePlan();
+      renderStaffPlanner(b, el);
+    });
+  });
+  const fci = el.querySelector('#fillCleanIn');
+  if (fci) fci.addEventListener('change', () => { localStorage.setItem('ba_fillClean', fci.checked ? '1' : '0'); });
+  const cvi = el.querySelector('#cleanVisitsIn');
+  if (cvi) cvi.addEventListener('change', () => { localStorage.setItem('ba_cleanVisits', Math.max(1, Math.min(12, parseInt(cvi.value) || 2))); });
+  const cli = el.querySelector('#cleanLenIn');
+  if (cli) cli.addEventListener('change', () => { localStorage.setItem('ba_cleanLen', Math.max(1, Math.min(4, parseInt(cli.value) || 2))); });
+  const rsel = el.querySelector('#roleSel');
+  if (rsel) rsel.addEventListener('change', () => { staffRoleSel = rsel.value; renderStaffPlanner(b, el); });
+  // Желаемый график магазина: пресет или свой интервал; «как в игре» — снять настройку.
+  const hp = el.querySelector('#hoursPreset');
+  const setHours = (from, to) => { storeHours[bkey] = { from, to }; saveStoreHours(); renderStaffPlanner(b, el); };
+  if (hp) hp.addEventListener('change', () => {
+    const v = hp.value;
+    if (v === '') { delete storeHours[bkey]; saveStoreHours(); renderStaffPlanner(b, el); return; }
+    if (v === 'custom') { el.querySelector('#hoursCustom').style.display = ''; return; }
+    const [f, t] = v.split('-').map(Number); setHours(f, t);
+  });
+  const hf = el.querySelector('#hoursFrom'), ht = el.querySelector('#hoursTo');
+  const readCustom = () => {
+    const f = Math.max(0, Math.min(23, parseInt(hf.value) || 0)), t = Math.max(1, Math.min(24, parseInt(ht.value) || 24));
+    if (t > f) setHours(f, t);
+  };
+  if (hf) hf.addEventListener('change', readCustom);
+  if (ht) ht.addEventListener('change', readCustom);
+  const auto = el.querySelector('#planAuto');
+  if (auto) auto.addEventListener('click', () => { autoDistribute(b, staffRoleSel); renderStaffPlanner(b, el); });
+  const rst = el.querySelector('#planReset');
+  if (rst) rst.addEventListener('click', () => {
+    roleEmployees(b, staffRoleSel).forEach(e => delete (staffPlan[bkey] || {})[e.id]);
+    savePlan(); renderStaffPlanner(b, el);
+  });
+  const ap = el.querySelector('#planApply');
+  if (ap && canWrite) ap.addEventListener('click', () => applySchedule(b, staffRoleSel, el));
+}
+
+// Отправить план выбранной должности в игру. Мод заменит в игре смены ТОЛЬКО этих сотрудников.
+async function applySchedule(b, role, el) {
+  const bkey = b.street + '|' + b.number;
+  const plan = staffPlan[bkey] || {};
+  const emps = roleEmployees(b, role);
+  const status = el.querySelector('#applyStatus');
+  const shifts = [];
+  emps.forEach(e => {
+    const p = plan[e.id] || {};
+    Object.keys(p).forEach(day => parseShifts(p[day]).forEach(sh => shifts.push({ dayIndex: +day, employeeId: e.id, from: sh.from, to: sh.to, type: sh.clean ? 'Cleaning' : 'Default' })));
+  });
+  const roleLabel = role === '__all__' ? 'всех' : role;
+  // Часы работы магазина пишем только если задан желаемый график и применяем не уборку.
+  // Желаемое окно уходит в игру: часы работы там считаются по фактически записанным сменам
+  // (смена может быть отброшена, если рабочее место занято) — иначе магазин остался бы открытым без персонала.
+  const win = (!isCleaningRole(role) && desiredWindow(bkey)) || null;
+  const hours = win ? plannedOpening(b) : null;
+  const hoursNote = hours ? `\nЧасы работы магазина тоже будут изменены: ${hours.map(h => dayRu(h.day) + ' ' + (h.isOpen ? h.slots.map(s => s.from + '–' + s.to).join(',') : 'закрыт')).join('; ')}.` : '';
+  if (!confirm(`Применить в игре расписание для: ${roleLabel} (${emps.length} чел., ${shifts.length} смен)?\nТекущие смены этих сотрудников в игре будут заменены.${hoursNote}`)) return;
+  if (status) status.textContent = 'Применяю…';
+  try {
+    const r = await fetch(API + '/api/schedule/apply', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ street: b.street, number: b.number, employeeIds: emps.map(e => e.id), shifts, openingWindow: win || undefined, openingHours: hours || undefined })
+    });
+    const res = await r.json();
+    if (res.ok) {
+      status.innerHTML = `<span class="ok">✔ Применено: добавлено ${res.added} смен, убрано ${res.removed}${win ? `, часы пересчитаны по факту: изменено ${res.hoursChanged || 0} дн., магазин открыт ${res.openHours || 0} ч/нед` : ''}.</span>` +
+        ((res.warnings || []).length ? ` <span style="color:var(--yellow)">${esc(res.warnings.join('; '))}</span>` : '');
+    } else {
+      status.innerHTML = `<span class="warn">✖ ${esc(res.error || 'ошибка')}</span>`;
+    }
+  } catch (e) {
+    if (status) status.innerHTML = `<span class="warn">✖ нет связи с игрой: ${esc(e.message)}</span>`;
+  }
+}
+
+/* ================= Закупки (авто-заказ у оптовика) ================= */
+function renderPurchase() {
+  const list = snap.businesses.filter(b => b.hasBusiness && (b.inventory || []).length);
+  const el = document.getElementById('purchaseView');
+  const b = fillBuildingSelect(document.getElementById('purchaseBuilding'), list, purchaseBuildingSel);
+  if (!b) { el.innerHTML = '<div class="empty">Нет бизнесов с товарами</div>'; return; }
+  purchaseBuildingSel = bkeyOf(b);
+  const days = Math.max(1, parseInt(document.getElementById('purchaseDays').value) || 7);
+  const wsList = snap.wholesalers || [];
+  const contracts = ((snap.logistics || {}).contracts || []).filter(c => c.street === b.street && c.number === b.number);
+  const wsSel = document.getElementById('purchaseWholesaler');
+  wsSel.innerHTML = wsList.map(w => `<option value="${esc(w.street + '|' + w.number)}">${esc(w.name)} · доставка ${fmtMoney(w.fee)}${contracts.some(c => c.wholesaleStreet === w.street && c.wholesaleNumber === w.number) ? ' · контракт есть' : ''}</option>`).join('');
+  const contracted = contracts[0] ? contracts[0].wholesaleStreet + '|' + contracts[0].wholesaleNumber : null;
+  const wsKeys = wsList.map(w => w.street + '|' + w.number);
+  purchaseWholesalerSel = wsKeys.includes(purchaseWholesalerSel) ? purchaseWholesalerSel : (wsKeys.includes(contracted) ? contracted : wsKeys[0]);
+  if (purchaseWholesalerSel) wsSel.value = purchaseWholesalerSel;
+  const ws = wsList.find(w => w.street + '|' + w.number === purchaseWholesalerSel);
+  const catalog = new Map((ws ? ws.catalog : []).map(c => [c.item, c]));
+  const contract = contracts.find(c => ws && c.wholesaleStreet === ws.street && c.wholesaleNumber === ws.number);
+  const inContract = new Map((contract ? contract.items : []).map(i => [i.item, i]));
+
+  // Товары на продажу = цены (список продаваемого) ∪ склад
+  const forSale = (b.prices || []).map(p => p.item);
+  const inv = new Map((b.inventory || []).map(i => [i.item, i]));
+  // Оценка спроса для товара без истории продаж (новый/пустой): медиана продаж/день по остальным товарам.
+  const knownRates = (b.inventory || []).map(i => i.soldPerDay || 0).filter(v => v > 0).sort((a, c) => a - c);
+  const estRate = knownRates.length ? knownRates[Math.floor(knownRates.length / 2)] : 0;
+  const items = [...new Set([...forSale, ...inv.keys()])].map(item => {
+    let i = inv.get(item) || { item, name: (b.prices || []).find(p => p.item === item)?.name || pretty(item), amount: 0, soldPerDay: 0, capacity: 0, freeCapacity: 0 };
+    // Остаток 0 и продаж не было — нечего продавать, история не накопится: считаем по оценке.
+    const estimated = !(i.soldPerDay > 0) && !(i.amount > 0) && forSale.includes(item) && estRate > 0;
+    const rate = estimated ? estRate : (i.soldPerDay || 0);
+    if (estimated) i = { ...i, daysLeft: 0 };
+    const need = Math.ceil(rate * days);
+    let rec = Math.max(0, need - (i.amount || 0));
+    // cargoCapacity у игры не всегда в штуках (бывает «16» при остатке 600) — ограничиваем
+    // ёмкостью только если она правдоподобна (не меньше текущего остатка).
+    const cap = (i.capacity || 0) + (i.freeCapacity || 0);
+    if (cap > 0 && cap >= (i.amount || 0)) rec = Math.min(rec, Math.max(0, cap - (i.amount || 0)));
+    const c = catalog.get(item);
+    const ci = inContract.get(item);
+    if (ci && !c) { /* оптовик не продаёт — только показать */ }
+    if (c && ci) rec = Math.min(rec, Math.max(0, (ci.weeklyMax || 99999) - (ci.orderedThisWeek || 0)));
+    return { ...i, need, rec, unit: c ? c.wholesale : (i.wholesale || 0), sold: !!c, ci, estimated, rate };
+  }).filter(x => x.sold || x.amount > 0 || x.soldPerDay > 0)
+    .sort((a, c) => (a.daysLeft ?? 999) - (c.daysLeft ?? 999));
+
+  const rows = items.map(x => `<tr class="${x.daysLeft != null && x.daysLeft <= 2 ? 'risk-high' : ''}">
+      <td>${esc(x.name)}${x.sold ? '' : ' <span class="mini">(нет у оптовика)</span>'}</td>
+      <td class="num">${x.amount}</td>
+      <td class="num">${x.estimated ? `<span class="yellow" title="истории продаж нет — оценка по медиане продаж других товаров магазина">~${x.rate}</span>` : (x.soldPerDay || '—')}</td>
+      <td class="num">${x.estimated ? '<span class="bad">0 дн. (нет)</span>' : daysLeftCell(x)}</td>
+      <td class="num" title="ёмкость показывается только если она в штуках (не меньше остатка)">${(x.capacity && x.capacity >= (x.amount || 0)) ? x.capacity + (x.freeCapacity ? ' +' + x.freeCapacity : '') : '—'}</td>
+      <td class="num">${x.need}</td>
+      <td class="num"><input class="plan-in po-amt" type="number" min="0" data-item="${esc(x.item)}" value="${x.sold ? x.rec : ''}" ${x.sold ? '' : 'disabled'}></td>
+      <td class="num">${x.unit ? fmtMoney(x.unit) : '—'}</td>
+      <td class="num po-cost" data-item="${esc(x.item)}">${x.sold ? fmtMoney(x.rec * x.unit) : '—'}</td>
+      <td class="mini">${x.ci ? `в контракте: ${x.ci.amount} (нед. ${x.ci.orderedThisWeek}/${x.ci.weeklyMax})` : ''}</td>
+    </tr>`).join('');
+  const canWrite = !!(snap.game && snap.game.canWrite);
+  // Сроки доставки (одинаковы у всех оптовиков): обычная — понедельник 08:00; срочная — завтра, вся сумма × множитель.
+  const dv = snap.delivery || null;
+  const today = snap.game ? snap.game.day : 0;
+  const goodsTotal = items.reduce((s, x) => s + (x.sold ? x.rec * x.unit : 0), 0);
+  const feeNow = ws ? ws.fee : 0;
+  const urgentMult = dv ? dv.urgentMultiplier : 1.2;
+  const deliveryInfo = dv ? `
+    <div class="cards" style="margin:8px 0">
+      <div class="card ${dv.lockPeriod ? 'yellow' : ''}"><div class="label">Обычная доставка</div><div class="value" style="font-size:18px">день ${dv.nextDeliveryDay} · через ${dv.nextDeliveryDay - today} дн.</div>
+        <div class="sub">${esc(dayRu(dv.regularDay))} ${String(dv.regularHour).padStart(2, '0')}:00 — одинаково у всех оптовиков${dv.lockPeriod ? ' · сейчас период блокировки (Вс 20:00–Пн 08:00)' : ''}</div></div>
+      <div class="card blue"><div class="label">Срочная доставка</div><div class="value" style="font-size:18px">день ${dv.urgentNextDay} · завтра 08:00</div>
+        <div class="sub">вся сумма заказа × ${urgentMult.toFixed(2)} (переплата <span id="poUrgentExtra">${fmtMoney((goodsTotal + feeNow) * (urgentMult - 1))}</span>)</div></div>
+    </div>` : '';
+  el.innerHTML = `
+    ${deliveryInfo}
+    <h2>${esc(bizName(b))} · рекомендация закупки на ${days} дн.
+      ${contract ? `<span class="mini">контракт с ${esc(ws.name)}: ${contract.enabled ? 'вкл' : 'выкл'}, ${contract.repeating ? 'повторяющийся' : 'разовый'}, след. доставка ${contract.nextDeliveryDay < today ? `<span class="warn">день ${contract.nextDeliveryDay} — просрочен, доставки не будет: нажмите «Заказать»</span>` : `день ${contract.nextDeliveryDay} (через ${contract.nextDeliveryDay - today} дн.)`}</span>` : `<span class="mini">контракта с ${esc(ws ? ws.name : '—')} нет — будет создан</span>`}</h2>
+    <div class="mini" style="margin-bottom:8px">Рекомендация = продажи/день × дни − остаток, с учётом ёмкости полок и недельного лимита оптовика. Для товара с нулевым остатком без истории продаж спрос оценивается (~) по медиане продаж других товаров магазина. Поправьте количества и нажмите «Заказать».</div>
+    <table><thead><tr><th>Товар</th><th class="num">Остаток</th><th class="num">Прод/день</th><th class="num">Хватит</th><th class="num">Ёмкость</th><th class="num">Нужно</th><th class="num">Заказать</th><th class="num">Цена/шт</th><th class="num">Сумма</th><th></th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="10" class="empty">Нет товаров</td></tr>'}</tbody></table>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+      <label class="mini"><input type="checkbox" id="poRepeat" ${contract ? (contract.repeating ? 'checked' : '') : 'checked'}> повторяющийся заказ</label>
+      <label class="mini"><input type="checkbox" id="poUrgent" ${contract && contract.urgent ? 'checked' : ''}> срочная доставка (завтра, ×${urgentMult.toFixed(2)})</label>
+      <span class="tab ${canWrite ? 'btn-blue' : 'disabled'}" style="padding:8px 16px" id="poApply">🛒 Заказать у оптовика</span>
+      <span id="poStatus" class="mini">${canWrite ? `Товар: <b id="poTotal">${fmtMoney(goodsTotal)}</b> + доставка ${fmtMoney(feeNow)} = <b id="poGrand">${fmtMoney(goodsTotal + feeNow)}</b>` : 'Запись в игру недоступна'}</span>
+    </div>`;
+  const recalc = () => {
+    let total = 0;
+    el.querySelectorAll('input.po-amt').forEach(inp => {
+      const x = items.find(i => i.item === inp.dataset.item); const q = Math.max(0, parseInt(inp.value) || 0);
+      const cell = el.querySelector(`td.po-cost[data-item="${CSS.escape(inp.dataset.item)}"]`); if (cell && x) cell.textContent = fmtMoney(q * x.unit);
+      if (x) total += q * x.unit;
+    });
+    const urgent = !!(el.querySelector('#poUrgent') || {}).checked;
+    const grand = (total + feeNow) * (urgent ? urgentMult : 1);
+    const t = el.querySelector('#poTotal'); if (t) t.textContent = fmtMoney(total);
+    const gr = el.querySelector('#poGrand'); if (gr) gr.textContent = fmtMoney(grand) + (urgent ? ' (срочно)' : '');
+    const ux = el.querySelector('#poUrgentExtra'); if (ux) ux.textContent = fmtMoney((total + feeNow) * (urgentMult - 1));
+  };
+  el.querySelectorAll('input.po-amt').forEach(inp => inp.addEventListener('input', recalc));
+  const pu = el.querySelector('#poUrgent'); if (pu) pu.addEventListener('change', recalc);
+  const ap = el.querySelector('#poApply');
+  if (ap && canWrite) ap.addEventListener('click', async () => {
+    const order = [...el.querySelectorAll('input.po-amt')].map(inp => ({ item: inp.dataset.item, amount: Math.max(0, parseInt(inp.value) || 0) })).filter(x => x.amount > 0);
+    if (!order.length) { alert('Нет позиций с количеством > 0'); return; }
+    if (!confirm(`Оформить заказ у ${ws.name} для ${bizName(b)}: ${order.length} позиций?`)) return;
+    const st = el.querySelector('#poStatus'); st.textContent = 'Оформляю…';
+    try {
+      const res = await postJson('/api/order/apply', { street: b.street, number: b.number, wholesaleStreet: ws.street, wholesaleNumber: ws.number, items: order,
+        repeating: el.querySelector('#poRepeat').checked, urgent: el.querySelector('#poUrgent').checked, enabled: true });
+      st.innerHTML = res.ok ? `<span class="ok">✔ Заказ оформлен: ${res.changed} позиций, доставка в день ${res.nextDeliveryDay}${res.nextDeliveryDay ? ` (через ${res.nextDeliveryDay - today} дн.)` : ""}.</span> ${(res.warnings || []).map(esc).join('; ')}` : `<span class="warn">✖ ${esc(res.error || 'ошибка')}</span>`;
+    } catch (e) { st.innerHTML = `<span class="warn">✖ ${esc(e.message)}</span>`; }
+  });
+}
+
+/* ================= Аналитика периода ================= */
+function sumBy(arr, f) { return (arr || []).reduce((s, x) => s + (f(x) || 0), 0); }
+function renderAnalytics() {
+  const list = snap.businesses.filter(b => b.hasBusiness);
+  const el = document.getElementById('analyticsView');
+  const b = fillBuildingSelect(document.getElementById('analyticsBuilding'), list, analyticsBuildingSel);
+  if (!b) { el.innerHTML = '<div class="empty">Нет бизнесов</div>'; return; }
+  analyticsBuildingSel = bkeyOf(b);
+  // прибыль по дням этого бизнеса из financialSummaries
+  const days = (snap.finances.dailySummaries || []).map(s => ({ day: s.day, st: (s.businesses || []).find(x => x.street === b.street && x.number === b.number) })).filter(x => x.st);
+  const last7 = days.slice(-7), prev7 = days.slice(-14, -7);
+  const k = (arr, f) => sumBy(arr, x => f(x.st));
+  const card = (label, cur, prev, money = true) => {
+    const d = prev ? (cur - prev) / Math.abs(prev) * 100 : 0;
+    return `<div class="card"><div class="label">${label}</div><div class="value">${money ? fmtMoney(cur) : Math.round(cur)}</div>
+      <div class="sub ${d >= 0 ? 'delta-up' : 'delta-down'}">${prev ? (d >= 0 ? '▲' : '▼') + ' ' + Math.abs(d).toFixed(0) + '% к прошлой неделе' : 'нет данных за прошлую неделю'}</div></div>`;
+  };
+  const cards = card('Выручка (7 дн.)', k(last7, s => s.sales), k(prev7, s => s.sales)) +
+    card('Прибыль (7 дн.)', k(last7, s => s.profit), k(prev7, s => s.profit)) +
+    card('Закупки (7 дн.)', k(last7, s => s.resources), k(prev7, s => s.resources)) +
+    card('Зарплаты (7 дн.)', k(last7, s => s.salary), k(prev7, s => s.salary)) +
+    card('Маржа, %', k(last7, s => s.sales) ? k(last7, s => s.profit) / k(last7, s => s.sales) * 100 : 0, k(prev7, s => s.sales) ? k(prev7, s => s.profit) / k(prev7, s => s.sales) * 100 : 0, false);
+  // товары: рентабельность
+  const totalRev = sumBy(b.sales, s => s.revenue) || 1;
+  const items = [...(b.sales || [])].map(s => ({ ...s, unitProfit: s.sold ? s.profit / s.sold : 0, marginPct: s.revenue ? s.profit / s.revenue * 100 : 0, share: s.revenue / totalRev * 100 }))
+    .sort((a, c) => c.profit - a.profit);
+  const best = items.slice(0, 3).map(x => x.item), worst = items.slice(-3).map(x => x.item);
+  const rows = items.map(x => `<tr>
+      <td>${esc(itemName(x))} ${best.includes(x.item) ? '🏆' : worst.includes(x.item) && x.profit <= 0 ? '⚠️' : ''}</td>
+      <td class="num">${x.sold}</td><td class="num">${fmtMoney(x.revenue)}</td>
+      <td class="num ${x.profit >= 0 ? 'pos' : 'neg'}">${fmtMoney(x.profit)}</td>
+      <td class="num">${x.unitProfit.toFixed(2)}</td>
+      <td class="num ${x.marginPct >= 30 ? 'pos' : x.marginPct < 10 ? 'neg' : ''}">${x.marginPct.toFixed(0)}%</td>
+      <td class="num">${x.share.toFixed(0)}%</td></tr>`).join('');
+  el.innerHTML = `<div class="cards">${cards}</div>
+    <div class="chart-box"><h3>Прибыль по дням · ${esc(bizName(b))} (30 дн.)</h3><canvas id="anProfit"></canvas></div>
+    <h2>Рентабельность товаров (7 дн.) <span class="mini">🏆 топ по прибыли · ⚠️ убыточные</span></h2>
+    <table><thead><tr><th>Товар</th><th class="num">Продано</th><th class="num">Выручка</th><th class="num">Прибыль</th><th class="num">Прибыль/шт</th><th class="num">Маржа</th><th class="num">Доля выручки</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="empty">Нет продаж</td></tr>'}</tbody></table>`;
+  drawBars(document.getElementById('anProfit'), days.slice(-30).map(x => ({ label: x.day, v: x.st.profit })));
+}
+
+/* ================= Цены ================= */
+function renderPrices() {
+  const list = snap.businesses.filter(b => b.hasBusiness && (b.prices || []).length);
+  const el = document.getElementById('pricesView');
+  const b = fillBuildingSelect(document.getElementById('pricesBuilding'), list, pricesBuildingSel);
+  if (!b) { el.innerHTML = '<div class="empty">Нет данных о ценах</div>'; return; }
+  pricesBuildingSel = bkeyOf(b);
+  const edits = priceEdits[bkeyOf(b)] = priceEdits[bkeyOf(b)] || {};
+  const sat = b.satisfaction ? b.satisfaction.pricing : null;
+  const rows = (b.prices || []).map(p => {
+    const cur = edits[p.item] != null ? edits[p.item] : p.price;
+    const vsMarket = p.market ? (cur - p.market) / p.market * 100 : null;
+    const margin = p.wholesale ? (cur - p.wholesale) / cur * 100 : null;
+    const hint = vsMarket != null && vsMarket > 15 ? '<span class="warn">выше рынка</span>' : vsMarket != null && vsMarket < -15 ? '<span style="color:var(--yellow)">сильно ниже рынка</span>' : '<span class="ok">ок</span>';
+    return `<tr>
+      <td>${esc(p.name)}</td>
+      <td class="num"><input class="plan-in pr-in" type="number" step="0.1" min="0" data-item="${esc(p.item)}" value="${cur.toFixed(2)}"></td>
+      <td class="num">${p.market ? fmtMoney(p.market) : '—'}</td>
+      <td class="num ${vsMarket == null ? '' : vsMarket > 15 ? 'neg' : vsMarket < -15 ? '' : 'pos'}">${vsMarket == null ? '—' : (vsMarket >= 0 ? '+' : '') + vsMarket.toFixed(0) + '%'}</td>
+      <td class="num">${p.wholesale ? fmtMoney(p.wholesale) : '—'}</td>
+      <td class="num ${margin == null ? '' : margin < 15 ? 'neg' : 'pos'}">${margin == null ? '—' : margin.toFixed(0) + '%'}</td>
+      <td class="num">${p.defaultMarket ? fmtMoney(p.defaultMarket) : '—'}</td>
+      <td>${hint}${edits[p.item] != null ? ' <span class="mini">(изменено)</span>' : ''}</td></tr>`;
+  }).join('');
+  const canWrite = !!(snap.game && snap.game.canWrite);
+  el.innerHTML = `
+    <div class="cards">
+      <div class="card ${sat == null ? '' : sat >= 70 ? 'green' : sat >= 40 ? 'yellow' : 'red'}"><div class="label">Оценка цен покупателями</div><div class="value">${sat == null ? '—' : sat}</div><div class="sub">удовлетворённость «Цены»</div></div>
+      <div class="card"><div class="label">Товаров</div><div class="value">${(b.prices || []).length}</div><div class="sub">${(b.prices || []).filter(p => p.market && p.price > p.market * 1.15).length} выше рынка на 15%+</div></div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <span class="tab" id="prMarket">= рынок</span><span class="tab" id="prMarket5">= рынок −5%</span><span class="tab" id="prMarketP5">= рынок +5%</span>
+      <span class="tab" id="prMargin">закупка +40%</span><span class="tab" id="prReset">сбросить правки</span>
+    </div>
+    <table><thead><tr><th>Товар</th><th class="num">Наша цена</th><th class="num">Мин. у конкурентов</th><th class="num">к рынку</th><th class="num">Закупка</th><th class="num">Маржа</th><th class="num">Базовая</th><th>Оценка</th></tr></thead><tbody>${rows}</tbody></table>
+    <div style="display:flex;gap:10px;align-items:center;margin-top:10px">
+      <span class="tab ${canWrite ? 'btn-blue' : 'disabled'}" style="padding:8px 16px" id="prApply">💲 Применить цены в игре</span>
+      <span id="prStatus" class="mini">${canWrite ? 'Запишет только изменённые цены.' : 'Запись в игру недоступна'}</span>
+    </div>`;
+  const setAll = (f) => { (b.prices || []).forEach(p => { const v = f(p); if (v != null && v >= 0) edits[p.item] = Math.round(v * 100) / 100; }); renderPrices(); };
+  el.querySelector('#prMarket').onclick = () => setAll(p => p.market || null);
+  el.querySelector('#prMarket5').onclick = () => setAll(p => p.market ? p.market * 0.95 : null);
+  el.querySelector('#prMarketP5').onclick = () => setAll(p => p.market ? p.market * 1.05 : null);
+  el.querySelector('#prMargin').onclick = () => setAll(p => p.wholesale ? p.wholesale * 1.4 : null);
+  el.querySelector('#prReset').onclick = () => { priceEdits[bkeyOf(b)] = {}; renderPrices(); };
+  el.querySelectorAll('input.pr-in').forEach(inp => inp.addEventListener('change', () => { const v = parseFloat(inp.value); if (!isNaN(v)) edits[inp.dataset.item] = Math.max(0, Math.min(10000, v)); renderPrices(); }));
+  const ap = el.querySelector('#prApply');
+  if (ap && canWrite) ap.addEventListener('click', async () => {
+    const changed = (b.prices || []).filter(p => edits[p.item] != null && Math.abs(edits[p.item] - p.price) > 0.001).map(p => ({ item: p.item, price: edits[p.item] }));
+    if (!changed.length) { alert('Нет изменённых цен'); return; }
+    if (!confirm(`Применить ${changed.length} цен в игре для ${bizName(b)}?`)) return;
+    const st = el.querySelector('#prStatus'); st.textContent = 'Применяю…';
+    try {
+      const res = await postJson('/api/prices/set', { street: b.street, number: b.number, prices: changed });
+      st.innerHTML = res.ok ? `<span class="ok">✔ Обновлено ${res.changed} цен.</span>` : `<span class="warn">✖ ${esc(res.error || 'ошибка')}</span>`;
+      if (res.ok) priceEdits[bkeyOf(b)] = {};
+    } catch (e) { st.innerHTML = `<span class="warn">✖ ${esc(e.message)}</span>`; }
+  });
+}
+
+/* ================= Кадры: советник по найму и удержанию ================= */
+function renderHr() {
+  const el = document.getElementById('hrView');
+  const hr = snap.hr || { staff: [], candidates: [] };
+  const bizOf = (s) => snap.businesses.find(b => b.street === s.street && b.number === s.number);
+  const risk = (s) => s.quitWarning || s.satisfaction <= 20 ? 'высокий' : (s.unfulfilled || []).length || s.satisfaction < 45 ? 'средний' : 'низкий';
+  const staff = [...(hr.staff || [])].sort((a, c) => a.satisfaction - c.satisfaction);
+  const highRisk = staff.filter(s => risk(s) === 'высокий').length;
+  const badge = document.getElementById('hrBadge'); badge.style.display = highRisk ? '' : 'none'; badge.textContent = highRisk;
+  const rows = staff.map(s => { const r = risk(s); const b = bizOf(s); return `<tr class="${r === 'высокий' ? 'risk-high' : ''}">
+      <td>${esc(s.name)}${s.absent ? ' 🤒' : ''}<div class="mini">${esc(s.skill || '')} · ${b ? esc(bizName(b)) : '—'}</div></td>
+      <td class="num">${fmtMoney(s.wage)}/ч</td>
+      <td><div class="hbar" style="margin:0"><div style="width:${s.satisfaction}%;background:${satColor(s.satisfaction)}"></div></div><span class="mini">${s.satisfaction}</span></td>
+      <td class="${r === 'высокий' ? 'warn' : r === 'средний' ? '' : 'ok'}">${r}${s.quitWarning ? ' · ⚠ предупредил об уходе' : ''}</td>
+      <td>${(s.unfulfilled || []).map(d => `<span class="chip" style="color:var(--red)">✖ ${esc(d)}</span>`).join('') || '<span class="mini">все требования выполнены</span>'}</td>
+      <td class="mini">${(s.unfulfilled || []).length ? 'выполнить требования: ' + s.unfulfilled.join(', ') : s.satisfaction < 45 ? 'проверить зарплату/условия' : '—'}</td></tr>`; }).join('');
+  // дефицит навыков по бизнесам: требуется (required) vs назначено (weeklyHours по навыку)
+  const gaps = [];
+  snap.businesses.filter(b => b.staff).forEach(b => {
+    const have = {}; (b.staff.employees || []).forEach(e => { if (!e.absent) have[e.skill || '—'] = (have[e.skill || '—'] || 0) + (e.weeklyHours || 0); });
+    (b.staff.required || []).forEach(r => { const h = have[r.skill] || 0; if (h < r.hours) gaps.push({ b, skill: r.skill, need: r.hours - h, have: h, req: r.hours }); });
+  });
+  const gapRows = gaps.map(g => `<tr><td>${esc(bizName(g.b))}</td><td>${esc(g.skill)}</td><td class="num">${g.have}/${g.req} ч</td><td class="warn">не хватает ${g.need} ч/нед → нанять ${g.need >= 30 ? 'на полную' : 'на частичную'} занятость</td></tr>`).join('');
+  const cands = [...(hr.candidates || [])].sort((a, c) => (c.skills || []).reduce((s, x) => s + x.value, 0) - (a.skills || []).reduce((s, x) => s + x.value, 0));
+  const candRows = cands.map(c => { const fit = gaps.find(g => g.skill === c.skill); return `<tr class="${fit ? '' : ''}">
+      <td>${esc(c.name)}<div class="mini">${esc(c.skill || '')} · ${c.fromJobBoard ? 'биржа труда' : 'хедхантер'} · ${c.hoursLeft} ч до истечения</div></td>
+      <td class="num">${fmtMoney(c.wage)}/ч</td>
+      <td>${skillsBlock(c.skills)}</td>
+      <td>${(c.demands || []).map(d => `<span class="chip">❗ ${esc(d)}</span>`).join('')}</td>
+      <td class="${fit ? 'ok' : 'mini'}">${fit ? `закрывает дефицит: ${esc(bizName(fit.b))} · ${esc(fit.skill)}` : 'дефицита по навыку нет'}</td></tr>`; }).join('');
+  el.innerHTML = `
+    <div class="cards">
+      <div class="card ${highRisk ? 'red' : 'green'}"><div class="label">Риск увольнения</div><div class="value">${highRisk}</div><div class="sub">сотрудников с высоким риском</div></div>
+      <div class="card"><div class="label">Сотрудников</div><div class="value">${staff.length}</div><div class="sub">средняя удовл. ${staff.length ? Math.round(sumBy(staff, s => s.satisfaction) / staff.length) : '—'}</div></div>
+      <div class="card ${gaps.length ? 'yellow' : 'green'}"><div class="label">Дефицит навыков</div><div class="value">${gaps.length}</div><div class="sub">позиций к найму</div></div>
+      <div class="card blue"><div class="label">Кандидатов</div><div class="value">${cands.length}</div><div class="sub">доступно сейчас</div></div>
+    </div>
+    <h2>Удержание</h2>
+    <table><thead><tr><th>Сотрудник</th><th class="num">Ставка</th><th>Удовл.</th><th>Риск ухода</th><th>Невыполненные требования</th><th>Что сделать</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="empty">Нет сотрудников</td></tr>'}</tbody></table>
+    <h2>Дефицит навыков (требуется планировкой vs назначено)</h2>
+    <table><thead><tr><th>Бизнес</th><th>Навык</th><th class="num">Есть/нужно</th><th>Рекомендация</th></tr></thead><tbody>${gapRows || '<tr><td colspan="4" class="empty">Дефицита нет 🎉</td></tr>'}</tbody></table>
+    <h2>Кандидаты</h2>
+    <table><thead><tr><th>Кандидат</th><th class="num">Просит</th><th>Навыки</th><th>Требования</th><th>Подходит</th></tr></thead><tbody>${candRows || '<tr><td colspan="5" class="empty">Нет кандидатов</td></tr>'}</tbody></table>`;
+}
+
+/* ================= Сеть: все точки, склады, логистика ================= */
+function renderNetwork() {
+  const el = document.getElementById('networkView');
+  const stores = snap.businesses.filter(b => b.hasBusiness);
+  const warehouses = snap.businesses.filter(b => !b.hasBusiness && (b.inventory || []).length);
+  const cards = stores.map(b => { const low = (b.inventory || []).filter(i => i.daysLeft != null && i.daysLeft <= 2).length; const probs = snap.problems.filter(p => p.street === b.street && p.number === b.number).length;
+    return `<div class="biz ${b.temporarilyClosed ? 'closed' : ''}"><h3>${esc(bizName(b))}${probs ? `<span class="alert-chip">⚠ ${probs}</span>` : ''}</h3>
+      <div class="addr">${esc(pretty(b.type))} · ${esc(addr(b))}</div>
+      <div class="row"><span class="k">Прибыль/день (7д)</span><b class="${b.avgDailyIncome >= 0 ? 'pos' : 'neg'}">${fmtMoney(b.avgDailyIncome)}</b></div>
+      <div class="row"><span class="k">Удовлетворённость</span><b style="color:${satColor(b.satisfaction ? b.satisfaction.overall : 0)}">${b.satisfaction ? b.satisfaction.overall : '—'}</b></div>
+      <div class="row"><span class="k">Сотрудников</span><b>${b.employees}</b></div>
+      <div class="row"><span class="k">Товары на исходе</span><b class="${low ? 'neg' : 'pos'}">${low}</b></div></div>`; }).join('');
+  // потребность сети: продажи/день по товарам × 7 vs остатки на складах
+  const need = {}; stores.forEach(b => (b.inventory || []).forEach(i => { need[i.item] = need[i.item] || { name: i.name, perDay: 0, inStores: 0 }; need[i.item].perDay += i.soldPerDay || 0; need[i.item].inStores += i.amount || 0; }));
+  const whStock = {}; warehouses.forEach(w => (w.inventory || []).forEach(i => { whStock[i.item] = (whStock[i.item] || 0) + i.amount; need[i.item] = need[i.item] || { name: i.name, perDay: 0, inStores: 0 }; }));
+  const whRows = Object.keys(need).map(k => { const n = need[k]; const wh = whStock[k] || 0; const week = n.perDay * 7; const cover = n.perDay ? (n.inStores + wh) / n.perDay : null;
+    return { ...n, item: k, wh, week, cover }; }).sort((a, c) => (a.cover ?? 999) - (c.cover ?? 999))
+    .map(n => `<tr class="${n.cover != null && n.cover < 3 ? 'risk-high' : ''}"><td>${esc(n.name)}</td><td class="num">${n.perDay.toFixed(1)}</td><td class="num">${Math.ceil(n.week)}</td><td class="num">${n.inStores}</td><td class="num">${n.wh}</td>
+      <td class="num">${n.cover == null ? '—' : `<b style="color:${n.cover <= 3 ? 'var(--red)' : n.cover <= 7 ? 'var(--yellow)' : 'var(--green)'}">${n.cover.toFixed(1)} дн.</b>`}</td></tr>`).join('');
+  const lg = snap.logistics || { contracts: [], imports: [], plans: [] };
+  const nameOf = (s, n) => { const b = snap.businesses.find(x => x.street === s && x.number === n); return b ? bizName(b) : pretty(s) + ', ' + n; };
+  const wsName = (s, n) => { const w = (snap.wholesalers || []).find(x => x.street === s && x.number === n); return w ? w.name : pretty(s) + ', ' + n; };
+  const cRows = (lg.contracts || []).map(c => `<tr><td>${esc(wsName(c.wholesaleStreet, c.wholesaleNumber))} → <b>${esc(nameOf(c.street, c.number))}</b></td>
+      <td>${c.enabled ? '<span class="ok">вкл</span>' : '<span class="mini">выкл</span>'}${c.repeating ? ' · повтор' : ''}${c.urgent ? ' · срочно' : ''}</td><td class="num">день ${c.nextDeliveryDay}${snap.game ? ` <span class="mini">(${c.nextDeliveryDay - snap.game.day >= 0 ? 'через ' + (c.nextDeliveryDay - snap.game.day) + ' дн.' : 'просрочен'})</span>` : ''}</td><td class="num">${fmtMoney(c.fee)}</td>
+      <td>${(c.items || []).filter(i => i.amount > 0).map(i => `<span class="chip">${esc(i.name)} × ${i.amount}</span>`).join('') || '<span class="mini">пусто</span>'}</td></tr>`).join('');
+  const iRows = (lg.imports || []).map(p => `<tr><td>Импорт ${esc(pretty(p.importStreet))}, ${p.importNumber}</td><td>${p.active ? '<span class="ok">активен</span>' : '<span class="mini">неактивен</span>'}${p.repeating ? ' · повтор' : ''}</td><td class="num">день ${p.nextDeliveryDay}</td><td></td>
+      <td>${(p.products || []).map(i => `<span class="chip">${esc(i.name)} × ${i.amount} → ${esc(nameOf(i.warehouseStreet, i.warehouseNumber))}</span>`).join('')}</td></tr>`).join('');
+  const pRows = (lg.plans || []).map(p => `<tr><td>Логистика из ${esc(nameOf(p.sourceStreet, p.sourceNumber))}</td><td colspan="3"></td><td>${(p.destinations || []).map(d => `<div>→ ${esc(nameOf(d.street, d.number))}: ${(d.targets || []).map(t => esc(t.name) + ' до ' + t.target).join(', ')}</div>`).join('')}</td></tr>`).join('');
+  el.innerHTML = `
+    <div class="cards">
+      <div class="card"><div class="label">Магазинов</div><div class="value">${stores.length}</div></div>
+      <div class="card"><div class="label">Складов</div><div class="value">${warehouses.length}</div></div>
+      <div class="card ${stores.reduce((s, b) => s + b.avgDailyIncome, 0) >= 0 ? 'green' : 'red'}"><div class="label">Прибыль сети/день</div><div class="value">${fmtMoney(stores.reduce((s, b) => s + b.avgDailyIncome, 0))}</div></div>
+      <div class="card ${(lg.contracts || []).length ? '' : 'yellow'}"><div class="label">Контрактов</div><div class="value">${(lg.contracts || []).length}</div><div class="sub">${(lg.imports || []).length} импорт · ${(lg.plans || []).length} логистика</div></div>
+    </div>
+    <div class="biz-grid">${cards}</div>
+    <h2>Склады vs потребность магазинов <span class="mini">(остаток в магазинах + на складах, дней при текущих продажах)</span></h2>
+    <table><thead><tr><th>Товар</th><th class="num">Прод/день (сеть)</th><th class="num">Нужно на неделю</th><th class="num">В магазинах</th><th class="num">На складах</th><th class="num">Хватит</th></tr></thead><tbody>${whRows || '<tr><td colspan="6" class="empty">Нет данных</td></tr>'}</tbody></table>
+    <h2>Поставки</h2>
+    <table><thead><tr><th>Маршрут</th><th>Статус</th><th class="num">Следующая</th><th class="num">Доставка</th><th>Позиции</th></tr></thead><tbody>${cRows + iRows + pRows || '<tr><td colspan="5" class="empty">Контрактов нет</td></tr>'}</tbody></table>`;
+}
+
+function renderFinances() {
+  drawBars(document.getElementById('weeklyChart'),
+    snap.finances.weeklyIncomeHistory.map(w => ({ label: w.week, v: w.income })));
+
+  const lastDay = snap.finances.dailySummaries.at(-1);
+  const el = document.getElementById('pnlTable');
+  if (!lastDay || !lastDay.businesses.length) { el.innerHTML = '<div class="empty">Отчётов пока нет</div>'; return; }
+  const nameOf = (st) => {
+    const b = snap.businesses.find(x => x.street === st.street && x.number === st.number);
+    return b ? (b.name || pretty(b.type)) : pretty(st.street) + ', ' + st.number;
+  };
+  el.innerHTML = `<table><thead><tr>
+      <th>Бизнес (день ${lastDay.day})</th><th class="num">Продажи</th><th class="num">Закупки</th>
+      <th class="num">Зарплаты</th><th class="num">Аренда</th><th class="num">Маркетинг</th>
+      <th class="num">Кражи</th><th class="num">Прибыль</th></tr></thead><tbody>` +
+    lastDay.businesses.map(st => `<tr>
+      <td>${esc(nameOf(st))}</td>
+      <td class="num">${fmtMoney(st.sales)}</td>
+      <td class="num">${fmtMoney(st.resources)}</td>
+      <td class="num">${fmtMoney(st.salary)}</td>
+      <td class="num">${fmtMoney(st.rent)}</td>
+      <td class="num">${fmtMoney(st.marketing)}</td>
+      <td class="num">${fmtMoney(st.theft)}</td>
+      <td class="num ${st.profit >= 0 ? 'pos' : 'neg'}"><b>${fmtMoney(st.profit)}</b></td>
+    </tr>`).join('') +
+    `<tr><td><b>Итого</b></td><td colspan="6"></td>
+      <td class="num ${lastDay.totalProfit >= 0 ? 'pos' : 'neg'}"><b>${fmtMoney(lastDay.totalProfit)}</b></td></tr>` +
+    '</tbody></table>';
+}
+
+function renderAll() {
+  if (!snap || snap.error) return;
+  const g = snap.game;
+  document.getElementById('gameClock').textContent =
+    `День ${g.day} · ${String(g.hour).padStart(2, '0')}:${String(g.minute).padStart(2, '0')}`;
+  renderOverview();
+  renderBusinesses();
+  renderProblems();
+  renderInventory();
+  renderSales();
+  renderStaff();
+  renderFinances();
+  try { renderPurchase(); } catch (e) { console.error('purchase', e); }
+  try { renderAnalytics(); } catch (e) { console.error('analytics', e); }
+  try { renderPrices(); } catch (e) { console.error('prices', e); }
+  try { renderHr(); } catch (e) { console.error('hr', e); }
+  try { renderNetwork(); } catch (e) { console.error('network', e); }
+}
+
+/* ---------- polling ---------- */
+async function poll() {
+  try {
+    const r = await fetch(API + '/api/snapshot', { cache: 'no-store' });
+    snap = await r.json();
+    document.getElementById('connDot').classList.add('ok');
+    document.getElementById('connText').textContent = 'онлайн';
+    renderAll();
+  } catch (e) {
+    document.getElementById('connDot').classList.remove('ok');
+    document.getElementById('connText').textContent = 'нет связи';
+  }
+}
+setInterval(poll, 3000);
+poll();
+
+/* ---------- tabs & controls ---------- */
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('section').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  document.getElementById(t.dataset.tab).classList.add('active');
+  renderAll();
+}));
+document.getElementById('invBuilding').addEventListener('change', e => { invBuildingSel = e.target.value; renderInventory(); });
+document.getElementById('invFilter').addEventListener('input', renderInventory);
+document.getElementById('salesBuilding').addEventListener('change', e => { salesBuildingSel = e.target.value; renderSales(); });
+document.getElementById('salesFilter').addEventListener('input', renderSales);
+document.getElementById('staffBuilding').addEventListener('change', e => { staffBuildingSel = e.target.value; renderStaff(); });
+document.getElementById('purchaseBuilding').addEventListener('change', e => { purchaseBuildingSel = e.target.value; renderPurchase(); });
+document.getElementById('purchaseWholesaler').addEventListener('change', e => { purchaseWholesalerSel = e.target.value; renderPurchase(); });
+document.getElementById('purchaseDays').addEventListener('change', renderPurchase);
+document.getElementById('analyticsBuilding').addEventListener('change', e => { analyticsBuildingSel = e.target.value; renderAnalytics(); });
+document.getElementById('pricesBuilding').addEventListener('change', e => { pricesBuildingSel = e.target.value; renderPrices(); });
+document.querySelectorAll('.seg-btn[data-staffview]').forEach(btn => btn.addEventListener('click', () => {
+  document.querySelectorAll('.seg-btn[data-staffview]').forEach(x => x.classList.remove('active'));
+  btn.classList.add('active');
+  staffViewMode = btn.dataset.staffview;
+  renderStaff();
+}));
+</script>
+</body>
+</html>

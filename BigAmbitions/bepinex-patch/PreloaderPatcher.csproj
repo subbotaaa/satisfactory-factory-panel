@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <AssemblyName>patch</AssemblyName>
+    <BepCore>D:\Big.Ambitions.v1.0\Big Ambitions\BepInEx\core</BepCore>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Mono.Cecil"><HintPath>$(BepCore)\Mono.Cecil.dll</HintPath></Reference>
+  </ItemGroup>
+</Project>

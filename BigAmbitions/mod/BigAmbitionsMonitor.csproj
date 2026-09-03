@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <AssemblyName>BigAmbitionsMonitor</AssemblyName>
+    <RootNamespace>BigAmbitionsMonitor</RootNamespace>
+    <Nullable>disable</Nullable>
+    <DebugType>none</DebugType>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <!-- Путь к Managed-папке игры; можно переопределить: dotnet build -p:GameManagedDir=... -->
+    <GameManagedDir Condition="'$(GameManagedDir)' == ''">D:\Big.Ambitions.v1.0\Big Ambitions\Big Ambitions_Data\Managed</GameManagedDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\shared\SnapshotCollector.cs" />
+    <Compile Include="..\shared\MonitorHttpServer.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="BigAmbitions">
+      <HintPath>$(GameManagedDir)\BigAmbitions.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="BigAmbitions.ModAPI">
+      <HintPath>$(GameManagedDir)\BigAmbitions.ModAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="BigAmbitions.Items">
+      <HintPath>$(GameManagedDir)\BigAmbitions.Items.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="HGExtensions">
+      <HintPath>$(GameManagedDir)\HGExtensions.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>$(GameManagedDir)\Newtonsoft.Json.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(GameManagedDir)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

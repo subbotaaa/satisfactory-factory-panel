@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>BigAmbitionsReader</AssemblyName>
+    <RootNamespace>BigAmbitionsMonitor</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Путь к Managed-папке игры; переопределяется: dotnet run ... -p:GameManagedDir=... -->
+    <GameManagedDir Condition="'$(GameManagedDir)' == ''">D:\Big.Ambitions.v1.0\Big Ambitions\Big Ambitions_Data\Managed</GameManagedDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Lib.Harmony" Version="2.3.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\shared\SnapshotCollector.cs" />
+    <Compile Include="..\shared\MonitorHttpServer.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Панель кладём рядом с exe (web root ридера) -->
+    <Content Include="..\dashboard.html" Link="dashboard.html" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="BigAmbitions"><HintPath>$(GameManagedDir)\BigAmbitions.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="BigAmbitions.Legacy"><HintPath>$(GameManagedDir)\BigAmbitions.Legacy.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="BigAmbitions.Items"><HintPath>$(GameManagedDir)\BigAmbitions.Items.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="HGExtensions"><HintPath>$(GameManagedDir)\HGExtensions.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="OdinSerializer"><HintPath>$(GameManagedDir)\OdinSerializer.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Newtonsoft.Json"><HintPath>$(GameManagedDir)\Newtonsoft.Json.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine"><HintPath>$(GameManagedDir)\UnityEngine.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(GameManagedDir)\UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+
+</Project>
