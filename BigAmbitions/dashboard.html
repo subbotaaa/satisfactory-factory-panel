@@ -159,6 +159,9 @@
     <div class="tab" data-tab="prices">Цены</div>
     <div class="tab" data-tab="staff">Сотрудники</div>
     <div class="tab" data-tab="hr">Кадры<span class="badge" id="hrBadge" style="display:none">0</span></div>
+    <div class="tab" data-tab="supply">Снабжение</div>
+    <div class="tab" data-tab="logistics">Логистика</div>
+    <div class="tab" data-tab="rentals">Аренда</div>
     <div class="tab" data-tab="network">Сеть</div>
     <div class="tab" data-tab="finances">Финансы</div>
   </div>
@@ -191,6 +194,7 @@
 
   <section id="purchase">
     <div class="toolbar">
+      <span class="tab active" id="poModeShops">🏪 Магазины</span><span class="tab" id="poModeWh">📦 Склады</span>
       <select id="purchaseBuilding"></select>
       <label style="font-size:12px;color:var(--muted)">Запас на дней: <input id="purchaseDays" class="plan-in" type="number" min="1" max="30" value="7"></label>
       <select id="purchaseWholesaler"></select>
@@ -209,7 +213,58 @@
   </section>
 
   <section id="hr">
+    <div class="toolbar">
+      <span class="tab active" id="hrModeStaff">👥 Сотрудники</span><span class="tab" id="hrModeCand">🧑‍💼 Кандидаты</span>
+      <select id="hrRole"></select>
+      <select id="hrBiz"></select>
+      <select id="hrSort">
+        <option value="role">по должности и навыку</option>
+        <option value="biz">по бизнесу</option>
+        <option value="skill">по уровню навыка</option>
+        <option value="risk">по риску ухода</option>
+        <option value="wage">по ставке</option>
+        <option value="name">по имени</option>
+      </select>
+      <input id="hrSearch" class="plan-in" type="text" placeholder="поиск по имени" style="width:160px">
+    </div>
     <div id="hrView"></div>
+  </section>
+
+  <section id="supply">
+    <div class="toolbar">
+      <label style="font-size:12px;color:var(--muted)">Запас в магазинах, дней: <input id="supShopDays" class="plan-in" type="number" min="1" max="30" value="7"></label>
+      <label style="font-size:12px;color:var(--muted)">Запас на складе, дней: <input id="supWhDays" class="plan-in" type="number" min="1" max="60" value="14"></label>
+      <label class="mini"><input type="checkbox" id="supRepeat" checked> повторяющиеся заказы</label>
+      <label class="mini" title="Если магазинов больше, чем пунктов у логиста — везём тем, у кого запас по товарам склада кончится раньше; остальным в другой день"><input type="checkbox" id="supAutoDest" checked> пункты — кому нужнее</label>
+    </div>
+    <div id="supplyView"></div>
+  </section>
+
+  <section id="logistics">
+    <div class="toolbar">
+      <select id="logPlan"></select>
+      <label style="font-size:12px;color:var(--muted)">Запас в магазине, дней: <input id="logDays" class="plan-in" type="number" min="1" max="60" value="7"></label>
+      <span class="tab" id="logRecalc">↻ Пересчитать по продажам</span>
+    </div>
+    <div id="logisticsView"></div>
+  </section>
+
+  <section id="rentals">
+    <div class="toolbar">
+      <select id="rentType"></select>
+      <select id="rentHood"></select>
+      <label style="font-size:12px;color:var(--muted)">Аренда до, $/дн: <input id="rentMax" class="plan-in" type="number" min="0" step="50" placeholder="без лимита"></label>
+      <label style="font-size:12px;color:var(--muted)">Площадь от, м²: <input id="rentSqm" class="plan-in" type="number" min="0" step="10" placeholder="любая"></label>
+      <label style="font-size:12px;color:var(--muted)" title="Активные конкуренты не сдают свои здания"><input type="checkbox" id="rentFree"> только доступные</label>
+      <select id="rentSort">
+        <option value="rent">дешевле аренда</option>
+        <option value="sqm">больше площадь</option>
+        <option value="perSqm">дешевле за м²</option>
+        <option value="traffic">выше трафик</option>
+        <option value="capacity">больше вместимость</option>
+      </select>
+    </div>
+    <div id="rentalsView"></div>
   </section>
 
   <section id="network">
@@ -251,6 +306,15 @@ let salesBuildingSel = '__all__';
 let salesSel = {}; // bkey -> выбранный товар для графика
 let staffBuildingSel = null;
 let staffViewMode = 'view';
+let purchaseMode = localStorage.getItem('ba_poMode') === 'warehouse' ? 'warehouse' : 'shops';
+let poFlags = {}; // ключ здания|поставщика → {repeat, urgent, smart}: выбор пользователя поверх значений контракта
+function poFlag(key, name, def) { const f = poFlags[key]; return f && f[name] != null ? f[name] : def; }
+function bindPoFlags(el, key) {
+  [['#poRepeat', 'repeat'], ['#poUrgent', 'urgent'], ['#poSmart', 'smart']].forEach(([id, name]) => {
+    const cb = el.querySelector(id); if (cb) cb.addEventListener('change', () => { poFlags[key] = poFlags[key] || {}; poFlags[key][name] = cb.checked; });
+  });
+}
+let pricesAll = false; // режим «все бизнесы» на вкладке цен
 let purchaseBuildingSel = null, purchaseWholesalerSel = null, analyticsBuildingSel = null, pricesBuildingSel = null;
 let priceEdits = {}; // bkey -> { item: price }
 const bkeyOf = (b) => b.street + '|' + b.number;
@@ -266,7 +330,8 @@ async function postJson(path, body) {
   const r = await fetch(API + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   return r.json();
 }
-let staffRoleSel = '__all__'; // должность (навык) для авто-распределения/применения
+let staffRoleSel = '__all__';
+let staffPlanNote = ''; // предупреждение планировщика о невыполнимых минимумах // должность (навык) для авто-распределения/применения
 let staffPlan = loadPlan(); // { bkey: { empId: { dayIndex: hours } } }
 
 const DAY_RU = { Monday:'Пн', Tuesday:'Вт', Wednesday:'Ср', Thursday:'Чт', Friday:'Пт', Saturday:'Сб', Sunday:'Вс' };
@@ -293,7 +358,35 @@ function pretty(key) {
   s = s.replace(/_/g, ' ');
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
-function addr(b) { return pretty(b.street) + ', ' + b.number; }
+/* Ёмкость хранилища для товара — по формуле игры (CargoInstance.GetMaxStockCapacity,
+   ItemHelper.DeliverCargoToBuilding): слот вмещает ceil(boxSize × множитель контейнера), новая стопка
+   при доставке создаётся размером boxSize, излишек возвращается деньгами.
+   fitNow — влезет одной доставкой сейчас; capacity — потолок, если хранить только этот товар. */
+function storageFit(b, item) {
+  const st = b && b.storage, cs = (st && st.containers) || [];
+  if (!cs.length) return null;
+  const box = Math.max(1, (snap.boxSizes || {})[item] || 1);
+  let fitNow = 0, capacity = 0, freeSlots = 0, slots = 0, units = 0;
+  cs.forEach(c => {
+    // кто принимает доставку: в магазине — склад + полки с этим же товаром; на складе — палеты
+    const accepts = isWarehouse(b) ? (c.warehouse || c.business) : (c.business || c.storageShelf || (c.shelf && c.stockItem === item));
+    if (!accepts) return;
+    const perSlot = Math.ceil(box * (c.mult || 1));
+    const stacks = c.stacks || [];
+    const free = Math.max(0, (c.slots || 0) - stacks.length);
+    slots += c.slots || 0; freeSlots += free; capacity += (c.slots || 0) * perSlot;
+    stacks.forEach(sk => { if (sk.item === item) { units += sk.amount || 0; if (!sk.isSealed && !sk.nested) fitNow += Math.max(0, perSlot - (sk.amount || 0)); } });
+    fitNow += free * box;
+  });
+  return { fitNow, capacity, freeSlots, slots, units, box };
+}
+function fitCell(f, need) {
+  if (!f) return '—';
+  const short = need != null && need > f.fitNow;
+  return `<span class="${short ? 'warn' : ''}" title="одной доставкой влезет ${f.fitNow}, потолок для этого товара ${f.capacity}; свободных слотов ${f.freeSlots} из ${f.slots}">${f.fitNow}${short ? ' ⚠' : ''}</span>`;
+}
+
+function addr(b) { return b.address || (b.number + ' ' + (b.streetLabel || pretty(b.street))); }
 function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function satColor(v) { return v >= 70 ? 'var(--green)' : v >= 40 ? 'var(--yellow)' : 'var(--red)'; }
 
@@ -423,7 +516,7 @@ function renderProblems() {
 
 function renderInventory() {
   const sel = document.getElementById('invBuilding');
-  const buildings = snap.businesses.filter(b => (b.inventory || []).length);
+  const buildings = snap.businesses.filter(b => (b.inventory || []).length || (b.hasBusiness && (b.prices || []).length));
   const options = [`<option value="__all__">Все здания</option>`]
     .concat(buildings.map(b => {
       const key = b.street + '|' + b.number;
@@ -444,6 +537,8 @@ function renderInventory() {
         <td class="num">${fmtMoney(r.value)}</td>
         <td class="num">${r.soldPerDay ? r.soldPerDay : '—'}</td>
         <td class="num">${daysLeftCell(r)}</td>
+        <td class="num">${fitCell(storageFit(b, r.item))}</td>
+        <td class="num mini">${(storageFit(b, r.item) || {}).capacity || '—'}</td>
       </tr>`)
       .join('');
     if (!rows) return '';
@@ -451,7 +546,7 @@ function renderInventory() {
     return `<h2>${esc(b.name || pretty(b.type))} · ${esc(addr(b))} <span style="color:var(--muted);font-size:13px">(итого ${fmtMoney(total)})</span></h2>
       <table><thead><tr>
         <th>Товар</th><th class="num">Кол-во</th><th class="num">Стоимость закупки</th>
-        <th class="num">Продаётся/день</th><th class="num">Хватит на</th>
+        <th class="num">Продаётся/день</th><th class="num">Хватит на</th><th class="num">Влезет ещё</th><th class="num">Потолок</th>
       </tr></thead><tbody>${rows}</tbody></table>`;
   }).join('') || '<div class="empty">Ничего не найдено</div>';
 }
@@ -739,6 +834,29 @@ function canWork(e, dayName, hour) {
 // Авто-распределение по сменам: приоритет сотрудникам с высшим навыком обслуживания,
 // учёт особенностей (свободные дни, макс. часов из требований, запретные часы смен).
 function roleOf(e) { return e.skill || '—'; }
+// Порядок должностей в списках: обслуживание → уборка → охрана → остальные (по алфавиту).
+function roleRank(role) {
+  const r = String(role || '');
+  if (/обслуж|service/i.test(r)) return 0;
+  if (/убор|clean/i.test(r)) return 1;
+  if (/охран|security|guard/i.test(r)) return 2;
+  return 3;
+}
+// Уровень по своей должности (для уборщика — уборка, для кассира — обслуживание).
+function ownSkillValue(e) {
+  const own = (e.skills || []).find(x => x.name === roleOf(e));
+  if (own) return own.value;
+  return (e.skills || []).reduce((m, x) => Math.max(m, x.value || 0), 0);
+}
+// Сортировка сотрудников: по должности, внутри — по убыванию навыка, затем по имени.
+function sortStaff(list, skillOf) {
+  const val = skillOf || ownSkillValue;
+  return [...(list || [])].sort((a, c) =>
+    roleRank(roleOf(a)) - roleRank(roleOf(c)) ||
+    String(roleOf(a)).localeCompare(String(roleOf(c)), 'ru') ||
+    (val(c) - val(a)) ||
+    String(a.name || '').localeCompare(String(c.name || ''), 'ru'));
+}
 function isAvailable(e) { return !e.absent; } // на больничном — не ставим
 function roleEmployees(b, role) {
   return (b.staff.employees || []).filter(e => role === '__all__' || roleOf(e) === role);
@@ -764,11 +882,9 @@ function autoDistributePlan(b, role) {
   const registers = registersFor(b, role);
   const hourWeight = (h) => traffic ? (traffic[h] || 0) : 1;
   const peak = traffic ? Math.max(...traffic) : 0;
-  // Сколько кассиров нужно в час: 1 всегда, 2 — в пиковые часы (≥70% от пика), если касс ≥ 2.
-  const needAt = (h) => (traffic && registers >= 2 && peak > 0 && (traffic[h] || 0) >= peak * 0.7) ? 2 : 1;
-  const dayNeed = (d) => { const w = planWindow(b, d); let s = 0; for (let h = w.from; h < w.to; h++) s += needAt(h); return s; };
-  // Потребность недели = часы открытия + второй кассир на пиках (а не просто однократное покрытие).
-  const totalNeed = days.reduce((s, d) => s + dayNeed(d), 0);
+  // Часы, которые вообще можно занять: окно × число рабочих мест должности.
+  // Уровни (кассы) заполняются по очереди: следующий — только когда предыдущий закрыт целиком.
+  const totalNeed = days.reduce((s, d) => { const w = planWindow(b, d); return s + (w.to - w.from) * registers; }, 0);
 
   // --- Этап 1: недельные цели ---
   const workable = {}; // сколько открытых дней сотрудник вообще может работать
@@ -785,9 +901,8 @@ function autoDistributePlan(b, role) {
   // Остаток — лучшим по обслуживанию, до их реального максимума. Раскладка по дням теряет часть часов
   // (лимит смены, запретные часы, края окна), поэтому закладываем запас +15%: цели чуть выше потребности,
   // а лишнее просто не разместится (в день ставим не больше, чем нужно кассиров).
-  // …но не больше, чем физически влезает: часы окна × число рабочих мест должности (одна касса — один человек в час).
-  const placeable = days.reduce((s, d) => { const w = planWindow(b, d); return s + (w.to - w.from) * registers; }, 0);
-  let remainingNeed = Math.min(Math.ceil(totalNeed * 1.15), placeable) - assigned;
+  let remainingNeed = totalNeed - assigned;
+  staffPlanNote = assigned > totalNeed ? `минимумы сотрудников (${assigned} ч) больше, чем часов работы магазина на ${registers} мест (${totalNeed} ч) — кому-то не хватит` : '';
   [...emps].sort((a, c) => serviceValue(c) - serviceValue(a) || feasMax[c.id] - feasMax[a.id]).forEach(e => {
     if (remainingNeed <= 0) return;
     const add = Math.min(feasMax[e.id] - target[e.id], remainingNeed);
@@ -804,7 +919,10 @@ function autoDistributePlan(b, role) {
   const plan = Object.assign({}, staffPlan[bkey] || {});
   emps.forEach(e => delete plan[e.id]);
 
-  days.forEach(d => {
+  // pass 1 — базовое покрытие окна одним кассиром; pass ≥ 2 — следующая касса.
+  // levelHours — часы, на которые хватает людей для текущей кассы (самые посещаемые).
+  let levelHours = null;
+  const placeDay = (d, pass) => {
     const w = planWindow(b, d), dayName = d.day;
     let tFrom = w.from, tTo = w.to;
     // Если часов на всё окно не хватит (бюджет < окна) — покрываем самый прибыльный непрерывный отрезок
@@ -821,16 +939,27 @@ function autoDistributePlan(b, role) {
     const windowLen = tTo - tFrom;
     // Потребность и покрытие по часам дня: need = сколько кассиров нужно, cov = сколько уже стоит.
     const need = {}, cov = {};
-    for (let h = tFrom; h < tTo; h++) { need[h] = needAt(h); cov[h] = 0; }
+    for (let h = tFrom; h < tTo; h++) {
+      need[h] = pass === 1 ? 1 : (levelHours && levelHours.has(d.dayIndex + ':' + h) ? pass : pass - 1);
+      cov[h] = 0;
+    }
+    // уже расставленные смены (первый проход) — второй проход должен их видеть
+    const worksAlready = {};
+    emps.forEach(e => {
+      const own = parseShifts((plan[e.id] || {})[d.dayIndex]).filter(x => !x.clean);
+      worksAlready[e.id] = own.length > 0;
+      own.forEach(sh => { for (let h = Math.max(tFrom, sh.from); h < Math.min(tTo, sh.to); h++) cov[h]++; });
+    });
     // Кандидаты дня: есть часы, день не свободный, лимит рабочих дней (ровно N в неделю) не исчерпан.
-    const avail = emps.filter(e => rem[e.id] > 0 && !freeDaysOf(e).has(dayName) && daysUsed[e.id] < daysCap[e.id]);
+    const avail = emps.filter(e => rem[e.id] > 0 && !freeDaysOf(e).has(dayName)
+      && (daysUsed[e.id] < daysCap[e.id] || worksAlready[e.id]));
     // Длина смены — из недельной цели: остаток / оставшиеся дни (+1 запас), не длиннее потолка;
     // если суммы этих долей не хватает на окно (напр. выходные без Rick) — разрешаем всем до потолка.
     const fair = {}; avail.forEach(e => fair[e.id] = Math.min(HARD_MAX, Math.ceil(rem[e.id] / Math.max(1, daysLeft[e.id])) + 1));
     const fairSum = avail.reduce((s, e) => s + fair[e.id], 0);
     const cap = {}; avail.forEach(e => cap[e.id] = fairSum < windowLen ? HARD_MAX : fair[e.id]);
 
-    const usedToday = {};
+    const usedToday = Object.assign({}, worksAlready);
     const shiftOf = (e) => parseShift((plan[e.id] || {})[d.dayIndex]);
     const setShift = (e, sh) => { plan[e.id] = plan[e.id] || {}; plan[e.id][d.dayIndex] = fmtShift(sh); };
     // Сначала те, кто отстаёт от своего МИНИМУМА часов (минимум — требование сотрудника, его нельзя
@@ -838,7 +967,6 @@ function autoDistributePlan(b, role) {
     const minUrg = (e) => Math.max(0, minHoursOf(e) - (target[e.id] - rem[e.id])) / Math.max(1, daysLeft[e.id]);
     const byUrgency = (a, c) => minUrg(c) - minUrg(a) || (rem[c.id] / Math.max(1, daysLeft[c.id])) - (rem[a.id] / Math.max(1, daysLeft[a.id])) || serviceValue(c) - serviceValue(a);
     const byService = (a, c) => minUrg(c) - minUrg(a) || serviceValue(c) - serviceValue(a) || byUrgency(a, c);
-    const byServiceOnly = (a, c) => serviceValue(c) - serviceValue(a) || byUrgency(a, c);
     // В загруженные часы (≥50% от пика) ставим лучших по обслуживанию, в тихие — кому нужнее часы.
     const busy = (h) => traffic && peak > 0 && hourWeight(h) >= peak * 0.5;
 
@@ -850,7 +978,8 @@ function autoDistributePlan(b, role) {
 
     // Слой 1 — базовое покрытие всего окна; слой 2 — второй кассир на пиковых часах
     // (лучшие по обслуживанию). Одна смена в день на человека, смена не длиннее макс.
-    for (let layer = 1; layer <= 2; layer++) {
+    {
+      const layer = pass;
       const want = (h) => Math.min(layer, need[h]);
       let cur = tFrom;
       while (cur < tTo) {
@@ -861,7 +990,8 @@ function autoDistributePlan(b, role) {
           if (ext) { ext.sh.to = cur + 1; setShift(ext.e, ext.sh); cov[cur]++; rem[ext.e.id]--; cur++; continue; }
         }
         const cands = avail.filter(e => !usedToday[e.id] && rem[e.id] > 0 && canWork(e, dayName, cur))
-          .sort(layer === 2 ? byServiceOnly : busy(cur) ? byService : byUrgency);
+          // на вторую кассу и в загруженные часы — сперва кто не добрал минимум, затем лучшие по обслуживанию
+          .sort(layer === 2 || busy(cur) ? byService : byUrgency);
         if (!cands.length) { cur++; continue; } // некому покрыть этот час — пробел (добьём продлением ниже)
         // Длина смены кандидата с этого часа; берём первого по приоритету, у кого выходит ≥ MIN_SHIFT
         // (чтобы не плодить огрызки по часу), иначе — самого длинного из первых пяти.
@@ -869,17 +999,19 @@ function autoDistributePlan(b, role) {
         let cand = cands.find(e => lenFor(e) >= MIN_SHIFT) || cands.slice(0, 5).sort((a, c) => lenFor(c) - lenFor(a))[0];
         let len = lenFor(cand);
         if (len <= 0) { usedToday[cand.id] = true; continue; }
-        if (layer === 2 && len < 2) { cur++; continue; } // второму кассиру — не короче 2 ч
+        if (layer >= 2 && len < 2) { cur++; continue; } // на доп. кассе смены не короче 2 ч
         setShift(cand, { from: cur, to: cur + len });
         for (let h = cur; h < cur + len; h++) cov[h]++;
         rem[cand.id] -= len; usedToday[cand.id] = true; cur += len;
       }
     }
+    if (pass === 1) {
     // Добивка недокрытых часов: продлеваем соседнюю смену (у кого есть остаток и смена короче макс.)
     for (let pass = 0; pass < 4; pass++) {
       let progressed = false;
       for (let h = tFrom; h < tTo; h++) {
-        if (cov[h] >= need[h]) continue;
+        // добиваем только базовое покрытие: вторая касса — отдельным проходом, из остатка часов
+        if (cov[h] >= 1) continue;
         const ext = avail.map(e => ({ e, sh: shiftOf(e) }))
           .filter(x => x.sh && rem[x.e.id] > 0 && (x.sh.to - x.sh.from) < HARD_MAX && canWork(x.e, dayName, h) && (x.sh.to === h || x.sh.from === h + 1))
           .sort((a, c) => rem[c.e.id] - rem[a.e.id])[0];
@@ -908,13 +1040,148 @@ function autoDistributePlan(b, role) {
       for (let h = cur; h < cur + len; h++) cov[h]++;
       rem[cand.id] -= len; cur += len;
     }
+    } // конец базового прохода
     avail.forEach(e => {
       const worked = parseShifts((plan[e.id] || {})[d.dayIndex]).length > 0;
-      if (worked) daysUsed[e.id]++;
-      // у сотрудника с «ровно N дней» оставшиеся дни уменьшаются только отработанными днями
-      if (worked || daysCap[e.id] === Infinity) daysLeft[e.id] = Math.max(0, daysLeft[e.id] - 1);
+      if (pass === 1) {
+        if (worked) daysUsed[e.id]++;
+        // у сотрудника с «ровно N дней» оставшиеся дни уменьшаются только отработанными днями
+        if (worked || daysCap[e.id] === Infinity) daysLeft[e.id] = Math.max(0, daysLeft[e.id] - 1);
+      } else if (worked && !worksAlready[e.id]) daysUsed[e.id]++; // вторая касса заняла новый день
     });
+  };
+
+  // Приоритет — график магазина: сперва закрываем одним кассиром всю неделю.
+  days.forEach(d => placeDay(d, 1));
+
+  // Дальше кассы включаются по очереди: следующая — только когда предыдущая закрыта целиком.
+  // На последнюю (неполную) хватает не на все часы — берём самые посещаемые.
+  const coveredTo = (d, level) => {
+    const w = planWindow(b, d), cov = new Array(25).fill(0);
+    emps.forEach(e => parseShifts((plan[e.id] || {})[d.dayIndex]).filter(x => !x.clean)
+      .forEach(sh => { for (let h = sh.from; h < sh.to; h++) cov[h]++; }));
+    for (let h = w.from; h < w.to; h++) if (cov[h] < level) return false;
+    return true;
+  };
+  for (let level = 2; level <= registers; level++) {
+    if (!days.every(d => coveredTo(d, level - 1))) break;      // предыдущая касса ещё не закрыта
+    const budget = emps.reduce((s2, e) => s2 + rem[e.id], 0);
+    if (budget < 2) break;                                     // свободных часов не осталось
+    const slots = [];
+    days.forEach(d => { const w = planWindow(b, d); for (let h = w.from; h < w.to; h++) slots.push({ key: d.dayIndex + ':' + h, t: hourWeight(h) }); });
+    slots.sort((x, y) => y.t - x.t);
+    levelHours = new Set(slots.slice(0, Math.min(slots.length, Math.floor(budget))).map(x => x.key));
+    days.forEach(d => placeDay(d, level));
+  }
+  levelHours = null;
+
+  // Финальный добор минимумов: минимум часов — требование сотрудника, а раскладка по сменам
+  // почти всегда теряет 1–2 часа на краях окна и лимитах длины. Добираем по часу, занимая
+  // свободное рабочее место (не больше registers человек в час) и примыкая к своей смене.
+  const shiftsAt = (e, d) => parseShifts((plan[e.id] || {})[d.dayIndex]);
+  const planHours = (e) => days.reduce((s2, d) => s2 + hoursOf(shiftsAt(e, d).filter(x => !x.clean)), 0);
+  const covAt = (d, h) => emps.reduce((n, e) => n + (shiftsAt(e, d).some(sh => !sh.clean && sh.from <= h && h < sh.to) ? 1 : 0), 0);
+  const addHour = (e, d, h) => {
+    const own = shiftsAt(e, d);
+    const clean = own.filter(x => x.clean);
+    const work = own.filter(x => !x.clean).concat([{ from: h, to: h + 1 }]).sort((x, y) => x.from - y.from);
+    const merged = [];
+    work.forEach(sh => {
+      const last = merged[merged.length - 1];
+      if (last && sh.from <= last.to) last.to = Math.max(last.to, sh.to); else merged.push({ ...sh });
+    });
+    plan[e.id] = plan[e.id] || {};
+    plan[e.id][d.dayIndex] = fmtShifts(merged.concat(clean));
+  };
+  [...emps].sort((x, y) => (minHoursOf(y) - planHours(y)) - (minHoursOf(x) - planHours(x))).forEach(e => {
+    let guard = 0;
+    while (planHours(e) < minHoursOf(e) && planHours(e) < maxHoursOf(e) && guard++ < 60) {
+      let best = null;
+      for (const d of days) {
+        if (freeDaysOf(e).has(d.day)) continue;
+        const own = shiftsAt(e, d), work = own.filter(x => !x.clean);
+        // новый рабочий день — только если лимит «ровно N дней» не исчерпан
+        if (!own.length && daysUsed[e.id] >= daysCap[e.id]) continue;
+        const w = planWindow(b, d);
+        for (let h = w.from; h < w.to; h++) {
+          if (!canWork(e, d.day, h)) continue;
+          if (own.some(sh => sh.from <= h && h < sh.to)) continue;   // уже занят этим часом
+          if (covAt(d, h) >= registers) continue;                     // все места заняты
+          const touching = work.find(sh => sh.to === h || sh.from === h + 1);
+          if (touching && (touching.to - touching.from) >= HARD_MAX) continue;
+          const score = touching ? 0 : (work.length ? 2 : 1);         // лучше продлить смену, чем плодить новые
+          if (!best || score < best.score) best = { d, h, score };
+          if (score === 0) break;
+        }
+        if (best && best.score === 0) break;
+      }
+      if (!best) break;
+      if (!shiftsAt(e, best.d).length) daysUsed[e.id]++;
+      addHour(e, best.d, best.h);
+    }
   });
+  // --- Ремонт минимумов: все часы недели уже розданы, а кто-то ниже минимума ---
+  // (а) отщипнуть час у соседней смены того, у кого запас над минимумом;
+  // (б) обменяться сменами с тем, у кого запас (отстающий берёт длинную, отдаёт короткую) —
+  //     спасает при «ровно N дней в неделю», когда добавить день нельзя.
+  {
+    const hoursOfE = (e) => days.reduce((a, d) => a + hoursOf(shiftsAt(e, d).filter(x => !x.clean)), 0);
+    const surplus = (e) => hoursOfE(e) - minHoursOf(e);
+    const writeDay = (e, d, list) => { plan[e.id] = plan[e.id] || {}; const clean = shiftsAt(e, d).filter(x => x.clean); plan[e.id][d.dayIndex] = fmtShifts(list.filter(x => x.to > x.from).concat(clean)); };
+    const canRange = (e, d, from, to) => { for (let h = from; h < to; h++) if (!canWork(e, d.day, h)) return false; return true; };
+    let guard = 0;
+    while (guard++ < 60) {
+      const lagging = emps.filter(e => hoursOfE(e) < minHoursOf(e)).sort((a, c) => surplus(a) - surplus(c));
+      if (!lagging.length) break;
+      const A = lagging[0];
+      let done = false;
+      // (а) час у соседа
+      for (const d of days) {
+        if (done) break;
+        const own = shiftsAt(A, d).filter(x => !x.clean);
+        for (const sa of own) {
+          if (done) break;
+          for (const edge of [{ h: sa.to, grow: 'to' }, { h: sa.from - 1, grow: 'from' }]) {
+            const w = planWindow(b, d); if (edge.h < w.from || edge.h >= w.to) continue;
+            if (!canWork(A, d.day, edge.h) || (sa.to - sa.from) >= HARD_MAX) continue;
+            const B = emps.find(e => e !== A && surplus(e) >= 1 && shiftsAt(e, d).some(x => !x.clean && (edge.grow === 'to' ? x.from === edge.h : x.to === edge.h + 1) && (x.to - x.from) >= 2));
+            if (!B) continue;
+            const listB = shiftsAt(B, d).filter(x => !x.clean); const sb = listB.find(x => edge.grow === 'to' ? x.from === edge.h : x.to === edge.h + 1);
+            if (edge.grow === 'to') { sb.from += 1; sa.to += 1; } else { sb.to -= 1; sa.from -= 1; }
+            writeDay(B, d, listB); writeDay(A, d, own); done = true;
+          }
+        }
+      }
+      if (done) continue;
+      // (б) обмен сменами
+      const need = minHoursOf(A) - hoursOfE(A);
+      let best = null;
+      for (const da of days) for (const sa of shiftsAt(A, da).filter(x => !x.clean)) {
+        const la = sa.to - sa.from;
+        for (const B of emps) {
+          if (B === A) continue;
+          for (const db of days) {
+            if (db === da || shiftsAt(A, db).length || shiftsAt(B, da).length) continue;
+            for (const sb of shiftsAt(B, db).filter(x => !x.clean)) {
+              const gain = (sb.to - sb.from) - la;
+              if (gain <= 0 || surplus(B) < gain) continue;
+              if (!canRange(A, db, sb.from, sb.to) || !canRange(B, da, sa.from, sa.to)) continue;
+              const score = Math.abs(gain - need);   // ближе к недостающему — лучше
+              if (!best || score < best.score) best = { A, B, da, db, sa, sb, score };
+            }
+          }
+        }
+      }
+      if (!best) break;
+      const { da, db, sa, sb, B } = best;
+      const restA = shiftsAt(A, da).filter(x => !x.clean && !(x.from === sa.from && x.to === sa.to));
+      const restB = shiftsAt(B, db).filter(x => !x.clean && !(x.from === sb.from && x.to === sb.to));
+      writeDay(A, da, restA); writeDay(B, db, restB);
+      writeDay(A, db, shiftsAt(A, db).filter(x => !x.clean).concat([{ from: sb.from, to: sb.to }]));
+      writeDay(B, da, shiftsAt(B, da).filter(x => !x.clean).concat([{ from: sa.from, to: sa.to }]));
+    }
+  }
+
   staffPlan[bkey] = plan;
   savePlan();
 }
@@ -1058,7 +1325,7 @@ function renderStaffPlanner(b, el) {
 
   staffPlan[bkey] = staffPlan[bkey] || {};
   const plan = staffPlan[bkey];
-  const emps = st.employees || [];
+  const emps = sortStaff(st.employees || []);
   const vpd = +(localStorage.getItem('ba_cleanVisits') || 2), vlen = +(localStorage.getItem('ba_cleanLen') || 2);
   const cleaningMode = isCleaningRole(staffRoleSel);
 
@@ -1159,6 +1426,7 @@ function renderStaffPlanner(b, el) {
         <span id="hoursCustom" style="font-size:12px;color:var(--muted);${mode === 'custom' ? '' : 'display:none'}">с <input id="hoursFrom" class="plan-in" type="number" min="0" max="23" value="${dw ? dw.from : 8}"> до <input id="hoursTo" class="plan-in" type="number" min="1" max="24" value="${dw ? dw.to : 20}"></span>`;
       })()}
       <span class="tab active" style="padding:8px 16px" id="planAuto">⚡ Распределить (${esc(roleLabel)})</span>
+      ${staffPlanNote ? `<span class="warn" style="font-size:12px">⚠ ${esc(staffPlanNote)}</span>` : ''}
       ${cleaningMode ? '' : `<label style="font-size:12px;color:var(--muted)" title="Незанятые часы (до максимума) — короткие уборочные визиты в дни, когда сотрудник и так работает. Кроме тех, у кого требование «без смен по уборке»."><input type="checkbox" id="fillCleanIn" ${localStorage.getItem('ba_fillClean') === '1' ? 'checked' : ''}> 🧹 свободные часы — на уборку</label>`}
       ${(cleaningMode || staffRoleSel === '__all__') ? `<label style="font-size:12px;color:var(--muted)">🧹 Визитов/день: <input id="cleanVisitsIn" class="plan-in" type="number" min="1" max="12" value="${vpd}"></label>
       <label style="font-size:12px;color:var(--muted)">Визит, ч: <input id="cleanLenIn" class="plan-in" type="number" min="1" max="4" value="${vlen}"></label>` : ''}
@@ -1258,8 +1526,40 @@ async function applySchedule(b, role, el) {
 }
 
 /* ================= Закупки (авто-заказ у оптовика) ================= */
+// Склады: закупка идёт так же контрактом с оптовиком, но расход считается не по своим продажам,
+// а по тому, сколько товара развозится в магазины (планы логиста или продажи всех магазинов).
+function isWarehouse(b) { return b.isWarehouse || b.type === 'ba:businesstype_warehouse'; }
+// Магазины, которые снабжаются с этого склада (по планам логиста); если планов нет — все свои магазины.
+// Товары, которые магазину привозит склад (есть цель в плане логиста).
+function coveredByWarehouse(shop) {
+  const set = new Set();
+  if (localStorage.getItem('ba_autoDest') !== '0') {
+    // склад по ротации снабжает всех, кто продаёт его товары
+    snap.businesses.filter(isWarehouse).forEach(wh => {
+      const items = warehouseItems(wh);
+      Object.keys(shopRates(shop)).forEach(item => { if (items.has(item)) set.add(item); });
+    });
+  }
+  (((snap.logistics || {}).plans) || []).forEach(pl => (pl.destinations || []).forEach(d => {
+    if (d.street === shop.street && d.number === shop.number) (d.targets || []).forEach(t => { if (t.target > 0) set.add(t.item); });
+  }));
+  return set;
+}
+function warehouseTargets(w) {
+  const plans = ((snap.logistics || {}).plans || []).filter(pl =>
+    pl.sourceStreet === w.street && pl.sourceNumber === w.number);
+  const addrs = plans.flatMap(pl => (pl.destinations || []).map(d => d.street + '|' + d.number));
+  const shops = snap.businesses.filter(b => b.hasBusiness && !isWarehouse(b));
+  return addrs.length ? shops.filter(b => addrs.includes(bkeyOf(b))) : shops;
+}
+
 function renderPurchase() {
-  const list = snap.businesses.filter(b => b.hasBusiness && (b.inventory || []).length);
+  const el0 = document.getElementById('purchaseView');
+  document.getElementById('poModeShops').classList.toggle('active', purchaseMode === 'shops');
+  document.getElementById('poModeWh').classList.toggle('active', purchaseMode === 'warehouse');
+  if (purchaseMode === 'warehouse') return renderPurchaseWarehouse();
+  // Новый бизнес: склад пуст, но ассортимент уже задан — закупаться ему как раз и нужно.
+  const list = snap.businesses.filter(b => b.hasBusiness && !isWarehouse(b) && ((b.inventory || []).length || (b.prices || []).length));
   const el = document.getElementById('purchaseView');
   const b = fillBuildingSelect(document.getElementById('purchaseBuilding'), list, purchaseBuildingSel);
   if (!b) { el.innerHTML = '<div class="empty">Нет бизнесов с товарами</div>'; return; }
@@ -1279,37 +1579,55 @@ function renderPurchase() {
   const inContract = new Map((contract ? contract.items : []).map(i => [i.item, i]));
 
   // Товары на продажу = цены (список продаваемого) ∪ склад
-  const forSale = (b.prices || []).map(p => p.item);
-  const inv = new Map((b.inventory || []).map(i => [i.item, i]));
-  // Оценка спроса для товара без истории продаж (новый/пустой): медиана продаж/день по остальным товарам.
+  const forSale = (b.prices || []).map(p => p.item).filter(item => !isServiceItem(item));
+  const inv = new Map((b.inventory || []).filter(i => !isServiceItem(i.item)).map(i => [i.item, i]));
+  // Оценка спроса для товара без истории продаж (новый/пустой). По убыванию надёжности:
+  // 1) медиана продаж по остальным товарам этого же магазина, 2) продажи того же товара в других
+  // магазинах игрока, 3) медиана по ним. У совсем нового магазина своей истории ещё нет.
   const knownRates = (b.inventory || []).map(i => i.soldPerDay || 0).filter(v => v > 0).sort((a, c) => a - c);
   const estRate = knownRates.length ? knownRates[Math.floor(knownRates.length / 2)] : 0;
+  // Чужие продажи приводим к масштабу этого магазина по вместимости (сколько клиентов принимает).
+  const donors = snap.businesses.filter(x => x !== b && (x.inventory || []).some(i => i.soldPerDay > 0));
+  const donorCap = donors.length ? donors.reduce((s2, x) => s2 + (x.customerCapacity || 0), 0) / donors.length : 0;
+  const scale = (donorCap > 0 && b.customerCapacity > 0) ? Math.min(2, b.customerCapacity / donorCap) : 1;
+  const otherRate = (item) => {
+    const v = snap.businesses.filter(x => x !== b)
+      .flatMap(x => (x.inventory || []).filter(i => i.item === item && i.soldPerDay > 0).map(i => i.soldPerDay));
+    return v.length ? (v.reduce((a, c) => a + c, 0) / v.length) * scale : 0;
+  };
+  const otherRates = forSale.map(otherRate).filter(v => v > 0).sort((a, c) => a - c);
+  const otherMed = otherRates.length ? otherRates[Math.floor(otherRates.length / 2)] : 0;
+  const estFor = (item) => Math.round((estRate || otherRate(item) || otherMed) * 10) / 10;
   const items = [...new Set([...forSale, ...inv.keys()])].map(item => {
     let i = inv.get(item) || { item, name: (b.prices || []).find(p => p.item === item)?.name || pretty(item), amount: 0, soldPerDay: 0, capacity: 0, freeCapacity: 0 };
     // Остаток 0 и продаж не было — нечего продавать, история не накопится: считаем по оценке.
-    const estimated = !(i.soldPerDay > 0) && !(i.amount > 0) && forSale.includes(item) && estRate > 0;
-    const rate = estimated ? estRate : (i.soldPerDay || 0);
+    const est = estFor(item);
+    const estimated = !(i.soldPerDay > 0) && !(i.amount > 0) && forSale.includes(item) && est > 0;
+    const rate = estimated ? est : (i.soldPerDay || 0);
     if (estimated) i = { ...i, daysLeft: 0 };
     const need = Math.ceil(rate * days);
     let rec = Math.max(0, need - (i.amount || 0));
     // cargoCapacity у игры не всегда в штуках (бывает «16» при остатке 600) — ограничиваем
     // ёмкостью только если она правдоподобна (не меньше текущего остатка).
-    const cap = (i.capacity || 0) + (i.freeCapacity || 0);
-    if (cap > 0 && cap >= (i.amount || 0)) rec = Math.min(rec, Math.max(0, cap - (i.amount || 0)));
+    // излишек доставки игра вернёт деньгами, а недельный лимит уже потрачен — режем по реальной ёмкости
+    const fit = storageFit(b, item);
+    const capped = fit && rec > fit.fitNow;
+    if (fit) rec = Math.min(rec, fit.fitNow);
     const c = catalog.get(item);
     const ci = inContract.get(item);
     if (ci && !c) { /* оптовик не продаёт — только показать */ }
     if (c && ci) rec = Math.min(rec, Math.max(0, (ci.weeklyMax || 99999) - (ci.orderedThisWeek || 0)));
-    return { ...i, need, rec, unit: c ? c.wholesale : (i.wholesale || 0), sold: !!c, ci, estimated, rate };
+    const viaWarehouse = coveredByWarehouse(b).has(item);
+    return { ...i, need, rec: viaWarehouse ? 0 : rec, recRaw: rec, unit: c ? c.wholesale : (i.wholesale || 0), sold: !!c, ci, estimated, rate, fit, capped, viaWarehouse };
   }).filter(x => x.sold || x.amount > 0 || x.soldPerDay > 0)
     .sort((a, c) => (a.daysLeft ?? 999) - (c.daysLeft ?? 999));
 
   const rows = items.map(x => `<tr class="${x.daysLeft != null && x.daysLeft <= 2 ? 'risk-high' : ''}">
-      <td>${esc(x.name)}${x.sold ? '' : ' <span class="mini">(нет у оптовика)</span>'}</td>
+      <td>${esc(x.name)}${x.sold ? '' : ' <span class="mini">(нет у оптовика)</span>'}${x.viaWarehouse ? ' <span class="mini" title="есть цель в плане логиста — привезёт склад, прямой заказ не нужен">📦 возит склад</span>' : ''}</td>
       <td class="num">${x.amount}</td>
-      <td class="num">${x.estimated ? `<span class="yellow" title="истории продаж нет — оценка по медиане продаж других товаров магазина">~${x.rate}</span>` : (x.soldPerDay || '—')}</td>
+      <td class="num">${x.estimated ? `<span class="yellow" title="истории продаж нет — оценка по продажам других товаров этого магазина, либо этого же товара в других ваших магазинах">~${x.rate}</span>` : (x.soldPerDay || '—')}</td>
       <td class="num">${x.estimated ? '<span class="bad">0 дн. (нет)</span>' : daysLeftCell(x)}</td>
-      <td class="num" title="ёмкость показывается только если она в штуках (не меньше остатка)">${(x.capacity && x.capacity >= (x.amount || 0)) ? x.capacity + (x.freeCapacity ? ' +' + x.freeCapacity : '') : '—'}</td>
+      <td class="num">${fitCell(x.fit, x.need - x.amount)}${x.capped ? '<div class="mini warn">срезано до ёмкости</div>' : ''}</td>
       <td class="num">${x.need}</td>
       <td class="num"><input class="plan-in po-amt" type="number" min="0" data-item="${esc(x.item)}" value="${x.sold ? x.rec : ''}" ${x.sold ? '' : 'disabled'}></td>
       <td class="num">${x.unit ? fmtMoney(x.unit) : '—'}</td>
@@ -1334,12 +1652,12 @@ function renderPurchase() {
     ${deliveryInfo}
     <h2>${esc(bizName(b))} · рекомендация закупки на ${days} дн.
       ${contract ? `<span class="mini">контракт с ${esc(ws.name)}: ${contract.enabled ? 'вкл' : 'выкл'}, ${contract.repeating ? 'повторяющийся' : 'разовый'}, след. доставка ${contract.nextDeliveryDay < today ? `<span class="warn">день ${contract.nextDeliveryDay} — просрочен, доставки не будет: нажмите «Заказать»</span>` : `день ${contract.nextDeliveryDay} (через ${contract.nextDeliveryDay - today} дн.)`}</span>` : `<span class="mini">контракта с ${esc(ws ? ws.name : '—')} нет — будет создан</span>`}</h2>
-    <div class="mini" style="margin-bottom:8px">Рекомендация = продажи/день × дни − остаток, с учётом ёмкости полок и недельного лимита оптовика. Для товара с нулевым остатком без истории продаж спрос оценивается (~) по медиане продаж других товаров магазина. Поправьте количества и нажмите «Заказать».</div>
+    <div class="mini" style="margin-bottom:8px">Рекомендация = продажи/день × дни − остаток, не больше, чем реально влезет в хранилище и полки (излишек игра возвращает деньгами, а недельный лимит сгорает), и в пределах недельного лимита оптовика. Для товара с нулевым остатком без истории продаж спрос оценивается (~) по продажам других товаров этого магазина, а у нового магазина — по продажам того же товара в других ваших магазинах, с поправкой на вместимость. Первый заказ лучше сделать поменьше и уточнить после первых дней торговли. Поправьте количества и нажмите «Заказать».</div>
     <table><thead><tr><th>Товар</th><th class="num">Остаток</th><th class="num">Прод/день</th><th class="num">Хватит</th><th class="num">Ёмкость</th><th class="num">Нужно</th><th class="num">Заказать</th><th class="num">Цена/шт</th><th class="num">Сумма</th><th></th></tr></thead>
     <tbody>${rows || '<tr><td colspan="10" class="empty">Нет товаров</td></tr>'}</tbody></table>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
-      <label class="mini"><input type="checkbox" id="poRepeat" ${contract ? (contract.repeating ? 'checked' : '') : 'checked'}> повторяющийся заказ</label>
-      <label class="mini"><input type="checkbox" id="poUrgent" ${contract && contract.urgent ? 'checked' : ''}> срочная доставка (завтра, ×${urgentMult.toFixed(2)})</label>
+      <label class="mini"><input type="checkbox" id="poRepeat" ${poFlag(bkeyOf(b) + '|' + purchaseWholesalerSel, 'repeat', contract ? !!contract.repeating : true) ? 'checked' : ''}> повторяющийся заказ</label>
+      <label class="mini"><input type="checkbox" id="poUrgent" ${poFlag(bkeyOf(b) + '|' + purchaseWholesalerSel, 'urgent', !!(contract && contract.urgent)) ? 'checked' : ''}> срочная доставка (завтра, ×${urgentMult.toFixed(2)})</label>
       <span class="tab ${canWrite ? 'btn-blue' : 'disabled'}" style="padding:8px 16px" id="poApply">🛒 Заказать у оптовика</span>
       <span id="poStatus" class="mini">${canWrite ? `Товар: <b id="poTotal">${fmtMoney(goodsTotal)}</b> + доставка ${fmtMoney(feeNow)} = <b id="poGrand">${fmtMoney(goodsTotal + feeNow)}</b>` : 'Запись в игру недоступна'}</span>
     </div>`;
@@ -1358,6 +1676,7 @@ function renderPurchase() {
   };
   el.querySelectorAll('input.po-amt').forEach(inp => inp.addEventListener('input', recalc));
   const pu = el.querySelector('#poUrgent'); if (pu) pu.addEventListener('change', recalc);
+  bindPoFlags(el, bkeyOf(b) + '|' + purchaseWholesalerSel);
   const ap = el.querySelector('#poApply');
   if (ap && canWrite) ap.addEventListener('click', async () => {
     const order = [...el.querySelectorAll('input.po-amt')].map(inp => ({ item: inp.dataset.item, amount: Math.max(0, parseInt(inp.value) || 0) })).filter(x => x.amount > 0);
@@ -1370,6 +1689,736 @@ function renderPurchase() {
       st.innerHTML = res.ok ? `<span class="ok">✔ Заказ оформлен: ${res.changed} позиций, доставка в день ${res.nextDeliveryDay}${res.nextDeliveryDay ? ` (через ${res.nextDeliveryDay - today} дн.)` : ""}.</span> ${(res.warnings || []).map(esc).join('; ')}` : `<span class="warn">✖ ${esc(res.error || 'ошибка')}</span>`;
     } catch (e) { st.innerHTML = `<span class="warn">✖ ${esc(e.message)}</span>`; }
   });
+}
+
+/* ================= Закупки на склад ================= */
+// Склад закупается тем же контрактом с оптовиком, но расход считается по магазинам,
+// которые он снабжает: сколько они продают в день, столько склад и отдаёт.
+function renderPurchaseWarehouse() {
+  const list = snap.businesses.filter(isWarehouse);
+  const el = document.getElementById('purchaseView');
+  const b = fillBuildingSelect(document.getElementById('purchaseBuilding'), list, purchaseBuildingSel);
+  if (!b) { el.innerHTML = '<div class="empty">Складов нет. Купите склад — он появится здесь.</div>'; return; }
+  purchaseBuildingSel = bkeyOf(b);
+  const days = Math.max(1, parseInt(document.getElementById('purchaseDays').value) || 7);
+  const contracts = ((snap.logistics || {}).contracts || []).filter(c => c.street === b.street && c.number === b.number);
+  const imports = ((snap.logistics || {}).imports || []);
+  // Источники: оптовики (контракт доставки) и импортёры (контракт агента по закупкам).
+  const sources = [
+    ...(snap.wholesalers || []).map(w => ({ kind: 'wholesale', street: w.street, number: w.number, name: w.name, fee: w.fee, catalog: w.catalog || [],
+      contract: contracts.find(c => c.wholesaleStreet === w.street && c.wholesaleNumber === w.number) })),
+    ...(snap.importers || []).map(im => ({ kind: 'import', street: im.street, number: im.number, name: im.name, fee: 0, catalog: im.catalog || [],
+      contract: imports.find(ip => ip.importStreet === im.street && ip.importNumber === im.number) })),
+  ];
+  const wsSel = document.getElementById('purchaseWholesaler');
+  wsSel.innerHTML = sources.map(w => `<option value="${esc(w.kind + '|' + w.street + '|' + w.number)}">${w.kind === 'import' ? '🌍' : '🏬'} ${esc(w.name)}${w.kind === 'wholesale' ? ' · доставка ' + fmtMoney(w.fee) : ' · импорт'}${w.contract ? ' · контракт есть' : ''}</option>`).join('');
+  const keyOfSrc = (w) => w.kind + '|' + w.street + '|' + w.number;
+  // по умолчанию — поставщик с контрактом, у которого больше всего нужных складу товаров
+  const needItems = new Set([...((b.inventory || []).map(i => i.item)), ...(((snap.logistics || {}).plans || [])
+    .filter(pl => pl.sourceStreet === b.street && pl.sourceNumber === b.number)
+    .flatMap(pl => (pl.destinations || []).flatMap(d => (d.targets || []).map(t => t.item))))]);
+  const coverage = (w) => (w.catalog || []).filter(c => needItems.has(c.item)).length;
+  const withContract = [...sources].filter(w => w.contract).sort((a, c) => coverage(c) - coverage(a))[0];
+  const srcKeys = sources.map(keyOfSrc);
+  purchaseWholesalerSel = srcKeys.includes(purchaseWholesalerSel) ? purchaseWholesalerSel
+    : (withContract ? keyOfSrc(withContract) : srcKeys[0]);
+  if (purchaseWholesalerSel) wsSel.value = purchaseWholesalerSel;
+  const ws = sources.find(w => keyOfSrc(w) === purchaseWholesalerSel);
+  if (!ws) { el.innerHTML = '<div class="empty">Нет доступных поставщиков</div>'; return; }
+  const isImport = ws.kind === 'import';
+  const catalog = new Map((ws.catalog || []).map(c => [c.item, c]));
+  const contract = ws.contract;
+  // у оптовика позиции контракта в items, у импортёра — в products (только по этому складу)
+  const inContract = new Map(!contract ? [] : (isImport
+    ? (contract.products || []).filter(x => !x.warehouseStreet || (x.warehouseStreet === b.street && x.warehouseNumber === b.number))
+        .map(x => [x.item, { item: x.item, amount: x.amount, orderedThisWeek: x.orderedThisWeek || 0,
+          weeklyMax: (catalog.get(x.item) || {}).weeklyMax || 0 }])
+    : (contract.items || []).map(i => [i.item, i])));
+
+  const targets = warehouseTargets(b);
+  const plans = ((snap.logistics || {}).plans || []).filter(pl => pl.sourceStreet === b.street && pl.sourceNumber === b.number);
+  const usage = {}, planned = {};
+  targets.forEach(t => (t.inventory || []).forEach(i => { if (i.soldPerDay > 0) usage[i.item] = (usage[i.item] || 0) + i.soldPerDay; }));
+  plans.forEach(pl => (pl.destinations || []).forEach(d => (d.targets || []).forEach(t => { planned[t.item] = (planned[t.item] || 0) + (t.target || 0); })));
+
+  const inv = new Map((b.inventory || []).map(i => [i.item, i]));
+  const nameOf = (item) => (inv.get(item) || {}).name
+    || (targets.flatMap(t => t.inventory || []).find(i => i.item === item) || {}).name
+    || (catalog.get(item) || {}).name || pretty(item);
+  const items = [...new Set([...inv.keys(), ...Object.keys(usage), ...Object.keys(planned), ...inContract.keys()])].map(item => {
+    const i = inv.get(item) || { item, amount: 0, wholesale: 0 };
+    const rate = usage[item] || 0;
+    const daysLeft = rate > 0 ? (i.amount || 0) / rate : null;
+    const need = Math.ceil(rate * days);
+    let rec = Math.max(0, need - (i.amount || 0));
+    const c = catalog.get(item), ci = inContract.get(item);
+    const wkMax = (ci && ci.weeklyMax) || (c && c.weeklyMax) || 0;
+    const wkUsed = (ci && ci.orderedThisWeek) || (c && c.orderedThisWeek) || 0;
+    if (c && wkMax) rec = Math.min(rec, Math.max(0, wkMax - wkUsed));
+    // Склад обслуживает товар, если он уже лежит на складе, есть в плане логиста или в контракте.
+    // Остальное не предзаполняем — рекомендация видна в «Нужно», но заказ не раздувается.
+    const served = (i.amount || 0) > 0 || (planned[item] || 0) > 0 || !!ci;
+    return { item, name: nameOf(item), amount: i.amount || 0, rate, daysLeft, need, rec, served,
+      unit: c ? c.wholesale : (i.wholesale || 0), sold: !!c, ci, planned: planned[item] || 0 };
+  }).filter(x => x.sold || x.amount > 0 || x.rate > 0)
+    .sort((a, c2) => (a.daysLeft ?? 999) - (c2.daysLeft ?? 999));
+
+  const canWrite = !!(snap.game && snap.game.canWrite);
+  const dv = snap.delivery || null, today = snap.game ? snap.game.day : 0;
+  const st = b.storage || {};
+  const vehicles = st.vehicles || [];
+  const ready = vehicles.filter(v => v.vehicle && v.driver).length;
+  const goodsTotal = items.reduce((s2, x) => s2 + (x.sold && x.served ? x.rec * x.unit : 0), 0);
+  const feeNow = ws ? ws.fee : 0, urgentMult = dv ? dv.urgentMultiplier : 1.2;
+
+  const rows = items.map(x => `<tr class="${x.daysLeft != null && x.daysLeft <= 2 ? 'risk-high' : ''}">
+      <td>${esc(x.name)}${x.sold ? '' : ' <span class="mini">(нет у поставщика)</span>'}</td>
+      <td class="num">${x.amount}</td>
+      <td class="num">${x.rate ? x.rate.toFixed(1) : '—'}</td>
+      <td class="num">${x.daysLeft == null ? '—' : `<span class="${x.daysLeft <= 2 ? 'warn' : x.daysLeft <= 5 ? '' : 'ok'}">${x.daysLeft.toFixed(1)} дн.</span>`}</td>
+      <td class="num">${x.planned || '—'}</td>
+      <td class="num">${x.need}</td>
+      <td class="num"><input class="plan-in po-amt" type="number" min="0" data-item="${esc(x.item)}" value="${x.served ? x.rec : 0}" ${x.sold ? '' : 'disabled'}></td>
+      <td class="num">${x.unit ? fmtMoney(x.unit) : '—'}</td>
+      <td class="num po-cost" data-item="${esc(x.item)}">${fmtMoney((x.served ? x.rec : 0) * x.unit)}</td>
+      <td class="mini">${x.ci ? `в контракте: ${x.ci.amount} (нед. ${x.ci.orderedThisWeek}/${x.ci.weeklyMax || '∞'})` : (x.served ? '' : '<span class="mini">склад его не возит</span>')}</td></tr>`).join('');
+
+  el.innerHTML = `
+    <div class="cards" style="margin-bottom:8px">
+      <div class="card ${ready ? 'green' : 'red'}"><div class="label">Автопарк склада</div><div class="value" style="font-size:18px">${ready} / ${vehicles.length || '—'}</div>
+        <div class="sub">${vehicles.length ? vehicles.map(v => `${esc(v.vehicle || 'нет машины')} · ${esc(v.driver || 'нет водителя')}${v.destinations ? ' · точек: ' + v.destinations : ''}`).join('<br>') : 'слотов для машин нет'}</div></div>
+      <div class="card ${plans.length ? '' : 'yellow'}"><div class="label">Развоз по магазинам</div><div class="value" style="font-size:18px">${plans.reduce((s2, pl) => s2 + (pl.destinations || []).length, 0)}</div>
+        <div class="sub">${plans.length ? targets.map(t => esc(bizName(t))).join(', ') : 'плана логиста нет — расход считаем по всем магазинам'}</div></div>
+      ${dv ? `<div class="card"><div class="label">Доставка на склад</div><div class="value" style="font-size:18px">день ${dv.nextDeliveryDay} · через ${dv.nextDeliveryDay - today} дн.</div>
+        <div class="sub">срочно — завтра, вся сумма × ${urgentMult.toFixed(2)}</div></div>` : ''}
+    </div>
+    <h2>${esc(bizName(b))} · закупка на склад на ${days} дн.
+      <span style="font-size:13px;color:var(--muted)">${contract ? `контракт с ${esc(ws.name)}: ${(isImport ? contract.active : contract.enabled) ? 'вкл' : 'выкл'}, ${contract.repeating ? 'повторяющийся' : 'разовый'}${isImport && contract.agent ? ', агент ' + esc(contract.agent) : ''}${isImport && contract.smart ? ', умная доставка' : ''}, ${contract.nextDeliveryDay < today ? `<span class="warn">день ${contract.nextDeliveryDay} — просрочен</span>` : `след. доставка день ${contract.nextDeliveryDay}`}` : `контракта с ${esc(ws ? ws.name : '—')} нет — будет создан`}</span></h2>
+    <div class="mini" style="margin-bottom:8px">Расход склада = сколько продают магазины, которые он снабжает. «В магазинах» — целевые запасы из плана логиста. ${(st.warehouse || st.business) ? '' : '<span class="warn">У склада не найдено стеллажей — доставку некуда разгружать.</span>'}</div>
+    <table><thead><tr><th>Товар</th><th class="num">На складе</th><th class="num">Уходит/день</th><th class="num">Хватит</th><th class="num">В магазинах</th><th class="num">Нужно</th><th class="num">Заказать</th><th class="num">Цена/шт</th><th class="num">Сумма</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="10" class="mini">Нет товаров: заполните план логиста или закажите первую партию у оптовика</td></tr>'}</tbody></table>
+    <div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap">
+      <label class="mini"><input type="checkbox" id="poRepeat" ${poFlag(bkeyOf(b) + '|' + purchaseWholesalerSel, 'repeat', !!(contract && contract.repeating)) ? 'checked' : ''}> повторяющийся заказ</label>
+      ${isImport ? `<label class="mini" title="Агент будет поддерживать на складе указанное количество"><input type="checkbox" id="poSmart" ${poFlag(bkeyOf(b) + '|' + purchaseWholesalerSel, 'smart', !!(contract && contract.smart)) ? 'checked' : ''}> умная доставка</label>` : ''}
+      <label class="mini"><input type="checkbox" id="poUrgent" ${poFlag(bkeyOf(b) + '|' + purchaseWholesalerSel, 'urgent', !!(contract && contract.urgent)) ? 'checked' : ''}> срочная доставка (завтра, ×${urgentMult.toFixed(2)})</label>
+      <span class="tab ${canWrite ? 'btn-blue' : 'disabled'}" style="padding:8px 16px" id="poApply">🛒 ${isImport ? 'Заказать у импортёра' : 'Заказать на склад'}</span>
+      <span id="poStatus" class="mini">${canWrite ? `Товар: <b id="poTotal">${fmtMoney(goodsTotal)}</b> + доставка ${fmtMoney(feeNow)} = <b id="poGrand">${fmtMoney(goodsTotal + feeNow)}</b>` : 'Запись в игру недоступна'}</span>
+    </div>`;
+
+  const recalc = () => {
+    let total = 0;
+    el.querySelectorAll('input.po-amt').forEach(inp => {
+      const x = items.find(i => i.item === inp.dataset.item); const q = Math.max(0, parseInt(inp.value) || 0);
+      const cell = el.querySelector(`td.po-cost[data-item="${CSS.escape(inp.dataset.item)}"]`); if (cell && x) cell.textContent = fmtMoney(q * x.unit);
+      if (x) total += q * x.unit;
+    });
+    const urgent = !!(el.querySelector('#poUrgent') || {}).checked;
+    const t = el.querySelector('#poTotal'); if (t) t.textContent = fmtMoney(total);
+    const gr = el.querySelector('#poGrand'); if (gr) gr.textContent = fmtMoney((total + feeNow) * (urgent ? urgentMult : 1)) + (urgent ? ' (срочно)' : '');
+  };
+  el.querySelectorAll('input.po-amt').forEach(inp => inp.addEventListener('input', recalc));
+  const pu = el.querySelector('#poUrgent'); if (pu) pu.addEventListener('change', recalc);
+  bindPoFlags(el, bkeyOf(b) + '|' + purchaseWholesalerSel);
+
+  const ap = el.querySelector('#poApply');
+  if (ap && canWrite) ap.addEventListener('click', async () => {
+    const order = [...el.querySelectorAll('input.po-amt')].map(inp => ({ item: inp.dataset.item, amount: Math.max(0, parseInt(inp.value) || 0) })).filter(x => x.amount > 0);
+    if (!order.length) { alert('Нет позиций с количеством > 0'); return; }
+    if (!confirm(`Оформить заказ у ${ws.name} на склад ${bizName(b)}: ${order.length} позиций?`)) return;
+    const stt = el.querySelector('#poStatus'); stt.textContent = 'Оформляю…';
+    try {
+      const smartEl = el.querySelector('#poSmart');
+      const res = isImport
+        ? await postJson('/api/import/apply', { street: b.street, number: b.number, importStreet: ws.street, importNumber: ws.number, items: order,
+            repeating: el.querySelector('#poRepeat').checked, urgent: el.querySelector('#poUrgent').checked, smart: smartEl ? smartEl.checked : undefined })
+        : await postJson('/api/order/apply', { street: b.street, number: b.number, wholesaleStreet: ws.street, wholesaleNumber: ws.number, items: order,
+            repeating: el.querySelector('#poRepeat').checked, urgent: el.querySelector('#poUrgent').checked, enabled: true });
+      stt.innerHTML = res.ok ? `<span class="ok">✔ Заказ оформлен: ${res.changed} позиций, доставка в день ${res.nextDeliveryDay}.</span> ${(res.warnings || []).map(esc).join('; ')}`
+        : `<span class="warn">✖ ${esc(res.error || 'ошибка')}</span>`;
+    } catch (e) { stt.innerHTML = `<span class="warn">✖ ${esc(e.message)}</span>`; }
+  });
+}
+
+/* ================= Снабжение: вся цепочка одним экраном ================= */
+// Правило источника: если склад возит товар в магазин — цель логисту и пополнение склада;
+// иначе — прямой заказ магазину. Всё считается от продаж/день и режется по ёмкости и лимитам.
+// Продажи/день по товарам магазина: остатки ∪ история продаж (у распроданного товара остатка нет).
+// Услуга (входная плата, стрижка…) — продаётся, но не доставляется. Список из мода, запасной — по ключу.
+function isServiceItem(item) {
+  const list = snap.services; if (Array.isArray(list) && list.length) return list.includes(item);
+  return /covercharge|fee|service|haircut|membership|ticket/i.test(String(item || ''));
+}
+function shopRates(shop) {
+  const m = {};
+  (shop.sales || []).forEach(x => { if (x.perDay > 0 && !isServiceItem(x.item)) m[x.item] = { rate: x.perDay, name: x.name }; });
+  (shop.inventory || []).forEach(i => { if (i.soldPerDay > 0 && !isServiceItem(i.item)) m[i.item] = { rate: i.soldPerDay, name: i.name }; });
+  return m;
+}
+function shopStock(shop, item) { const i = (shop.inventory || []).find(x => x.item === item); return i ? (i.amount || 0) : 0; }
+
+// Что склад держит или закупает: остаток > 0, позиции его включённых контрактов, активный импорт на него.
+function warehouseItems(wh) {
+  const set = new Set((wh.inventory || []).filter(i => i.amount > 0).map(i => i.item));
+  (((snap.logistics || {}).contracts) || []).filter(c => c.enabled && c.street === wh.street && c.number === wh.number)
+    .forEach(c => (c.items || []).forEach(i => { if (i.amount > 0) set.add(i.item); }));
+  (((snap.logistics || {}).imports) || []).filter(ip => ip.active)
+    .forEach(ip => (ip.products || []).forEach(x => { if (x.amount > 0 && x.warehouseStreet === wh.street && x.warehouseNumber === wh.number) set.add(x.item); }));
+  return set;
+}
+
+function buildSupplyPlan(shopDays, whDays) {
+  const shops = snap.businesses.filter(b => b.hasBusiness && !isWarehouse(b));
+  const plans = ((snap.logistics || {}).plans || []).filter(pl => pl.sourceStreet);
+  const contracts = (snap.logistics || {}).contracts || [];
+  const imports = (snap.logistics || {}).imports || [];
+  const wholesalers = snap.wholesalers || [], importers = snap.importers || [];
+  const findB = (st, n) => snap.businesses.find(b => b.street === st && b.number === n);
+  const nameOf = (item) => { for (const b of snap.businesses) { const i = (b.inventory || []).find(x => x.item === item) || (b.sales || []).find(x => x.item === item); if (i) return i.name; } for (const w of wholesalers.concat(importers)) { const c = (w.catalog || []).find(x => x.item === item); if (c) return c.name; } return pretty(item); };
+  const sells = (src, item) => (src.catalog || []).some(c => c.item === item);
+  const catOf = (src, item) => (src.catalog || []).find(c => c.item === item) || {};
+  const contractOf = (src, b) => contracts.find(c => c.wholesaleStreet === src.street && c.wholesaleNumber === src.number && c.street === b.street && c.number === b.number);
+  const partnershipOf = (src) => imports.find(ip => ip.importStreet === src.street && ip.importNumber === src.number);
+  // что едет в здание по ВСЕМ источникам, кроме указанного (его контракт мы переписываем)
+  const transitExcept = (b, item, exceptSrc) => {
+    let n = 0;
+    contracts.filter(c => c.enabled && c.street === b.street && c.number === b.number
+      && !(exceptSrc && exceptSrc.kind !== 'import' && c.wholesaleStreet === exceptSrc.street && c.wholesaleNumber === exceptSrc.number))
+      .forEach(c => (c.items || []).forEach(i => { if (i.item === item) n += i.amount || 0; }));
+    imports.filter(ip => ip.active && !(exceptSrc && exceptSrc.kind === 'import' && ip.importStreet === exceptSrc.street && ip.importNumber === exceptSrc.number))
+      .forEach(ip => (ip.products || []).forEach(x => { if (x.item === item && x.warehouseStreet === b.street && x.warehouseNumber === b.number) n += x.amount || 0; }));
+    return n;
+  };
+  const clamp = (b, src, item, amount) => {
+    let note = '';
+    const fit = storageFit(b, item); if (fit && amount > fit.fitNow) { amount = fit.fitNow; note = 'срезано до ёмкости'; }
+    const cat = catOf(src, item);
+    if (cat.weeklyMax) { const lim = Math.max(0, cat.weeklyMax - (cat.orderedThisWeek || 0)); if (amount > lim) { amount = lim; note = 'срезано до недельного лимита'; } }
+    return { amount: Math.max(0, amount), note };
+  };
+
+  // A. маршруты логиста: цель = продажи магазина × дни
+  const covered = {};
+  const autoDest = localStorage.getItem('ba_autoDest') !== '0';
+  const logistics = plans.map(pl => {
+    const wh = findB(pl.sourceStreet, pl.sourceNumber);
+    let destList = (pl.destinations || []).map(d => ({ street: d.street, number: d.number }));
+    let autoNote = '';
+    if (autoDest && wh && pl.maxDestinations > 0) {
+      const whItems = warehouseItems(wh);
+      const scored = shops.map(shop => {
+        const r = shopRates(shop);
+        const rel = Object.keys(r).filter(item => whItems.has(item));
+        return rel.length ? { shop, days: Math.min(...rel.map(item => shopStock(shop, item) / r[item].rate)) } : null;
+      }).filter(Boolean).sort((a, c) => a.days - c.days || String(bizName(a.shop)).localeCompare(String(bizName(c.shop)), 'ru'));
+      destList = scored.slice(0, pl.maxDestinations).map(x => ({ street: x.shop.street, number: x.shop.number, days: x.days }));
+      if (scored.length > pl.maxDestinations) autoNote = `магазинов ${scored.length}, пунктов ${pl.maxDestinations}: сегодня — ${destList.map(x => bizName(findB(x.street, x.number)) + ' (' + x.days.toFixed(1) + ' дн.)').join(', ')}; остальные — когда их запас станет меньше`;
+    }
+    const dests = destList.map(d => {
+      const shop = findB(d.street, d.number);
+      const targets = !shop ? [] : Object.entries(shopRates(shop))
+        .map(([item, r]) => ({ item, name: r.name, rate: r.rate, amount: Math.ceil(r.rate * shopDays) }));
+      if (shop) { covered[bkeyOf(shop)] = covered[bkeyOf(shop)] || new Set(); targets.forEach(t => covered[bkeyOf(shop)].add(t.item)); }
+      return { shop, street: d.street, number: d.number, targets };
+    }).filter(d => d.shop);
+    if (autoDest && wh) {
+      // магазины вне сегодняшнего маршрута тоже снабжает склад — по ротации; прямой заказ им не нужен
+      const whItems = warehouseItems(wh);
+      shops.forEach(sh => Object.keys(shopRates(sh)).forEach(item => {
+        if (whItems.has(item)) { covered[bkeyOf(sh)] = covered[bkeyOf(sh)] || new Set(); covered[bkeyOf(sh)].add(item); }
+      }));
+    }
+    return { plan: pl, wh, dests, autoNote };
+  }).filter(x => x.wh);
+
+  // выбор одного поставщика на здание: контракт есть и покрывает больше нужных товаров; иначе — любой с лучшим покрытием
+  const pickSource = (b, items, allowImport) => {
+    // rank: 2 — контракт включён и везёт, 1 — контракт есть, 0 — нет
+    const rankW = (w) => { const c = contractOf(w, b); return !c ? 0 : (c.enabled && (c.items || []).some(i => i.amount > 0) ? 2 : 1); };
+    const rankI = (im) => { const ip = partnershipOf(im); return !ip ? 0 : (ip.active && (ip.products || []).some(x => x.amount > 0 && x.warehouseStreet === b.street && x.warehouseNumber === b.number) ? 2 : 1); };
+    const cands = wholesalers.map(w => ({ kind: 'wholesale', src: w, rank: rankW(w) }))
+      .concat(allowImport ? importers.map(im => ({ kind: 'import', src: im, rank: rankI(im) })) : []);
+    const cover = (c) => items.filter(it => sells(c.src, it)).length;
+    const best = cands.filter(c => cover(c) > 0).sort((a, c) => (c.rank - a.rank) || (cover(c) - cover(a)) || ((a.kind === 'import') - (c.kind === 'import')))[0];
+    return best ? Object.assign({ kind: best.kind, has: best.rank > 0 }, best.src) : null;
+  };
+  const makeGroup = (b, src, demand, days, isWh) => {
+    const existing = src.kind === 'import'
+      ? Object.fromEntries(((partnershipOf(src) || {}).products || []).filter(x => x.warehouseStreet === b.street && x.warehouseNumber === b.number).map(x => [x.item, x.amount]))
+      : Object.fromEntries(((contractOf(src, b) || {}).items || []).map(i => [i.item, i.amount]));
+    const stockOf = (item) => ((b.inventory || []).find(i => i.item === item) || {}).amount || 0;
+    const items = [];
+    const all = new Set([...Object.keys(demand), ...Object.keys(existing).filter(k => existing[k] > 0)]);
+    all.forEach(item => {
+      if (!sells(src, item)) return;
+      const rate = demand[item] || 0;
+      const other = transitExcept(b, item, src);
+      const raw = Math.max(0, Math.ceil(rate * days) - stockOf(item) - other);
+      const { amount, note } = clamp(b, src, item, raw);
+      const was = existing[item] || 0;
+      if (amount === 0 && was === 0) return;
+      items.push({ item, name: nameOf(item), amount, was, unit: catOf(src, item).wholesale || 0, note: note || (amount < was ? 'уменьшено' : amount > was ? (was ? 'увеличено' : '') : 'без изменений'), stock: stockOf(item), transit: other, rate });
+    });
+    const total = items.reduce((a, i) => a + i.amount * i.unit, 0), wasTotal = items.reduce((a, i) => a + i.was * i.unit, 0);
+    return { kind: src.kind, src, target: b, isWh, items, total, wasTotal, hasContract: src.has };
+  };
+
+  // B. пополнение складов: спрос = продажи ВСЕХ магазинов, которые склад обслуживает
+  // (при автовыборе пунктов магазины ротируются, склад должен держать запас на всех)
+  const whOrders = [];
+  logistics.forEach(({ wh, dests }) => {
+    const demand = {};
+    const whItems = warehouseItems(wh);
+    dests.forEach(d => d.targets.forEach(t => whItems.add(t.item)));
+    const served = autoDest
+      ? shops.filter(sh => Object.keys(shopRates(sh)).some(item => whItems.has(item)))
+      : dests.map(d => d.shop);
+    served.forEach(sh => Object.entries(shopRates(sh)).forEach(([item, r]) => { if (whItems.has(item)) demand[item] = (demand[item] || 0) + r.rate; }));
+    const items = Object.keys(demand);
+    if (!items.length) return;
+    // импортёр с контрактом покрывает больше и дешевле — он первый; остаток товаров — второй источник
+    let left = new Set(items), guard = 0;
+    while (left.size && guard++ < 3) {
+      const src = pickSource(wh, [...left], true);
+      if (!src) break;
+      const part = {}; [...left].forEach(it => { if (sells(src, it)) { part[it] = demand[it]; left.delete(it); } });
+      const g = makeGroup(wh, src, part, whDays, true);
+      if (g.items.length) whOrders.push(g);
+    }
+  });
+
+  // C. прямые заказы магазинам — только то, чего склад не возит; контракт переписывается целиком
+  const shopOrders = [];
+  shops.forEach(shop => {
+    const cov = covered[bkeyOf(shop)] || new Set();
+    const demand = {};
+    Object.entries(shopRates(shop)).forEach(([item, r]) => { if (!cov.has(item)) demand[item] = r.rate; });
+    // товары, которые уже возит склад, в контракте магазина надо обнулить — они тоже попадают в группу через existing
+    const src = pickSource(shop, Object.keys(demand).length ? Object.keys(demand) : (shop.inventory || []).map(i => i.item), false);
+    if (!src) return;
+    const g = makeGroup(shop, src, demand, shopDays, false);
+    if (g.items.length) shopOrders.push(g);
+  });
+  return { logistics, whOrders, shopOrders, covered };
+}
+
+// Автопилот живёт в моде и работает без открытой панели; здесь — настройки и журнал.
+let apDraft = null; // несохранённые правки формы автопилота — переживают перерисовку
+function renderAutopilotBlock() {
+  const ap = snap.autopilot;
+  if (!ap) return '<div class="mini" style="margin:8px 0">Автопилот появится после обновления мода.</div>';
+  const c = Object.assign({}, ap.config || {}, apDraft || {});
+  const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  const chosen = String(c.orderDays || 'Saturday').split(',').map(x => x.trim());
+  const journal = (ap.journal || []).slice(0, 12).map(e => `<div class="mini" style="margin:4px 0;white-space:pre-line"><b>день ${e.day}, ${String(e.hour).padStart(2, '0')}:00</b> · ${e.kind === 'apply' ? '<span class="ok">применено</span>' : 'предложение'}\n${esc(e.text)}</div>`).join('');
+  return `<div class="chart-box" style="padding:10px 12px;margin:8px 0;border-color:${c.enabled ? (c.mode === 'apply' ? 'var(--green)' : 'var(--yellow)') : 'var(--border)'}">
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <b>🤖 Автопилот</b>
+      <label class="mini"><input type="checkbox" id="apEnabled" ${c.enabled ? 'checked' : ''}> включён</label>
+      <select id="apMode" class="plan-in" style="width:auto"><option value="suggest" ${c.mode !== 'apply' ? 'selected' : ''}>только предлагать (журнал)</option><option value="apply" ${c.mode === 'apply' ? 'selected' : ''}>применять в игре</option></select>
+      <label class="mini">час запуска <input id="apHour" class="plan-in" type="number" min="0" max="23" value="${c.hour ?? 6}" style="width:56px"></label>
+      <span class="mini" title="Дни берутся из полей «Запас в магазинах / на складе» вверху экрана">запас: магазины ${+document.getElementById('supShopDays').value || 7} дн., склад ${+document.getElementById('supWhDays').value || 14} дн. (из полей выше)</span>
+      <label class="mini">бюджет/нед. $ <input id="apBudget" class="plan-in" type="number" min="0" step="500" value="${c.weeklyBudget || 0}" style="width:90px" title="0 — без лимита"></label>
+      <label class="mini"><input type="checkbox" id="apRepeat" ${c.repeating !== false ? 'checked' : ''}> повторяющиеся заказы</label>
+      <label class="mini" title="Пункты назначения логиста каждый день выбирать по срочности"><input type="checkbox" id="apAutoDest" ${c.autoDest !== false ? 'checked' : ''}> пункты — кому нужнее</label>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">
+      <span class="mini">дни заказов:</span>
+      ${days.map(d => `<label class="mini"><input type="checkbox" class="apDay" value="${d}" ${chosen.includes(d) ? 'checked' : ''}> ${dayRu(d)}</label>`).join('')}
+      <span class="tab" style="padding:6px 12px" id="apSave">💾 Сохранить</span>
+      <span class="tab" style="padding:6px 12px" id="apRun">▶ Запустить сейчас</span>
+      <span id="apStatus" class="mini">${ap.lastRunDay >= 0 ? 'последний запуск: день ' + ap.lastRunDay : 'ещё не запускался'} · потрачено за неделю ${fmtMoney(ap.spentThisWeek || 0)}</span>
+    </div>
+    <div class="mini" style="margin-top:6px">Цели логисту обновляются каждый день в заданный час; заказы — только в отмеченные дни (по умолчанию суббота, до блокировки воскресенья 20:00). Режим «только предлагать» пишет в журнал, что сделал бы, — посмотрите неделю, потом включайте «применять».</div>
+    ${journal ? '<div style="margin-top:8px;max-height:260px;overflow:auto">' + journal + '</div>' : ''}
+  </div>`;
+}
+
+// Проверки снабжения: то, что «Применить всё» не заметит само — дубли, перезаказ, деньги.
+function supplyIssues(shopDays) {
+  const issues = [];
+  const contracts = (snap.logistics || {}).contracts || [], imports = (snap.logistics || {}).imports || [];
+  const findB = (st, n) => snap.businesses.find(b => b.street === st && b.number === n);
+  const wsName = (c) => ((snap.wholesalers || []).find(w => w.street === c.wholesaleStreet && w.number === c.wholesaleNumber) || {}).name || c.wholesaleStreet;
+  // двойные включённые контракты на один магазин
+  const byShop = {};
+  contracts.filter(c => c.enabled).forEach(c => { const k = c.street + '|' + c.number; (byShop[k] = byShop[k] || []).push(c); });
+  Object.entries(byShop).forEach(([k, list]) => {
+    if (list.length < 2) return;
+    const b = findB(list[0].street, list[0].number);
+    const overlap = list.slice(1).some(c => (c.items || []).some(i => i.amount > 0 && (list[0].items || []).some(j => j.item === i.item && j.amount > 0)));
+    if (overlap) issues.push({ level: 'red', text: `${bizName(b)}: ${list.length} включённых контракта на одни и те же товары (${list.map(wsName).join(', ')}) — привезут двойную партию` });
+  });
+  // два активных импорта с пересекающимися позициями на один склад
+  const act = imports.filter(p => p.active && (p.products || []).some(x => x.amount > 0));
+  for (let i = 0; i < act.length; i++) for (let k = i + 1; k < act.length; k++) {
+    const dup = (act[i].products || []).filter(x => x.amount > 0 && (act[k].products || []).some(y => y.item === x.item && y.amount > 0 && y.warehouseStreet === x.warehouseStreet));
+    if (dup.length) issues.push({ level: 'red', text: `Импорт: ${dup.length} одинаковых позиций в двух активных заказах на один склад — двойная партия` });
+  }
+  // перезаказ: остаток + едет > 2× цели
+  snap.businesses.filter(b => b.hasBusiness && !isWarehouse(b)).forEach(sh => {
+    const inc = {};
+    contracts.filter(c => c.enabled && c.street === sh.street && c.number === sh.number).forEach(c => (c.items || []).forEach(i => { inc[i.item] = (inc[i.item] || 0) + i.amount; }));
+    const over = (sh.inventory || []).filter(i => i.soldPerDay > 0 && inc[i.item] > 0 && ((i.amount || 0) + inc[i.item]) / i.soldPerDay > shopDays * 2);
+    if (over.length) issues.push({ level: 'yellow', text: `${bizName(sh)}: перезаказ по ${over.length} позициям — после доставки запас больше ${shopDays * 2} дн. (${over.slice(0, 3).map(i => i.name + ' ' + Math.round(((i.amount || 0) + inc[i.item]) / i.soldPerDay) + ' дн.').join(', ')}${over.length > 3 ? '…' : ''})` });
+  });
+  // деньги: сумма всех включённых заказов на ближайшую доставку против счёта
+  const catalogPrice = (item) => { for (const w of (snap.wholesalers || []).concat(snap.importers || [])) { const c = (w.catalog || []).find(x => x.item === item); if (c && c.wholesale) return c.wholesale; } return 0; };
+  const due = contracts.filter(c => c.enabled).reduce((a, c) => a + (c.fee || 0) + (c.items || []).reduce((b, i) => b + i.amount * (i.unitPrice || catalogPrice(i.item)), 0), 0)
+    + act.reduce((a, p) => a + (p.products || []).reduce((b, x) => b + x.amount * catalogPrice(x.item), 0), 0);
+  // до ближайшего рейса логиста (02:00): у кого из снабжаемых магазинов полки опустеют раньше
+  const hoursToRun = snap.game ? ((2 - snap.game.hour - 24) % 24 + 24) % 24 || 24 : 24;
+  ((snap.logistics || {}).plans || []).forEach(pl => (pl.destinations || []).forEach(d => {
+    const sh = findB(d.street, d.number); if (!sh) return;
+    const wh = findB(pl.sourceStreet, pl.sourceNumber);
+    // проданный до нуля товар исчезает из остатков магазина — считаем его уже пустым
+    const rates = shopRates(sh);
+    const short = (d.targets || []).filter(t => t.target > 0).map(t => {
+      const r = rates[t.item]; if (!r) return null;
+      return { item: t.item, name: t.name, hours: shopStock(sh, t.item) / r.rate * 24 };
+    }).filter(x => x && x.hours < hoursToRun);
+    if (short.length) {
+      const onWh = short.filter(x => ((wh && wh.inventory) || []).some(w => w.item === x.item && w.amount > 0));
+      issues.push({ level: 'yellow', text: `${bizName(sh)}: до рейса логиста (02:00, через ${hoursToRun} ч) ${short.map(x => x.name + (x.hours <= 0 ? ' (уже пусто)' : ' (' + Math.round(x.hours) + ' ч)')).join(', ')}${onWh.length === short.length ? ' — товар на складе есть, приедет ночью' : onWh.length ? ' — часть на складе есть, остальное ждать понедельника' : ' — на складе его нет, ждать понедельника'}` });
+    }
+  }));
+  const money = snap.game ? snap.game.money : 0;
+  if (due > money) issues.push({ level: 'red', text: `К понедельнику к оплате ~${fmtMoney(due)}, на счету ${fmtMoney(money)} — часть заказов не оплатится` });
+  return { issues, due };
+}
+
+let supDaysInit = false;
+function renderSupply() {
+  const el = document.getElementById('supplyView');
+  if (!supDaysInit && snap.autopilot && snap.autopilot.config) {
+    // один раз подставляем дни, сохранённые в моде, чтобы панель и автопилот считали одинаково
+    supDaysInit = true;
+    document.getElementById('supShopDays').value = snap.autopilot.config.shopDays || 7;
+    document.getElementById('supWhDays').value = snap.autopilot.config.whDays || 14;
+  }
+  const shopDays = Math.max(1, parseInt(document.getElementById('supShopDays').value) || 7);
+  const whDays = Math.max(1, parseInt(document.getElementById('supWhDays').value) || 14);
+  const plan = buildSupplyPlan(shopDays, whDays);
+  const canWrite = !!(snap.game && snap.game.canWrite);
+  const dv = snap.delivery, today = snap.game ? snap.game.day : 0;
+  const money = (g) => g.total + (g.kind === 'wholesale' && g.total > 0 ? (g.src.fee || 0) : 0);
+  const totalWh = plan.whOrders.reduce((a, g) => a + money(g), 0), totalShops = plan.shopOrders.reduce((a, g) => a + money(g), 0);
+  const targetsCount = plan.logistics.reduce((a, l) => a + l.dests.reduce((b, d) => b + d.targets.length, 0), 0);
+
+  const logiHtml = plan.logistics.map(l => `<div class="chart-box" style="padding:8px 12px;margin-bottom:8px">
+      <b>${esc(l.plan.manager || 'логист')} → ${esc(bizName(l.wh))}</b> <span class="mini">пунктов ${l.dests.length}/${l.plan.maxDestinations || '—'}</span>
+      ${l.autoNote ? `<div class="mini" style="color:var(--yellow)">🔁 ${esc(l.autoNote)}</div>` : ''}
+      ${l.dests.map(d => { const inv = d.shop.inventory || [], whInv = l.wh.inventory || [];
+        const ship = d.targets.map(t => { const i = inv.find(x => x.item === t.item), w = whInv.find(x => x.item === t.item); return { t, n: Math.max(0, Math.min(t.amount - (i ? i.amount : 0), w ? w.amount : 0)) }; }).filter(x => x.n > 0);
+        return `<div class="mini" style="margin-top:4px">📍 ${esc(bizName(d.shop))}: ${d.targets.length} целей, ночью поедет ${ship.length ? ship.map(x => esc(x.t.name) + ' ' + x.n).join(', ') : '<span style="color:var(--muted)">ничего — в магазине всё не ниже цели</span>'}</div>`; }).join('')}
+    </div>`).join('') || '<div class="mini">Планов логиста нет — склад никого не снабжает, все заказы пойдут магазинам напрямую.</div>';
+
+  const orderTable = (g) => `<table><thead><tr><th>Товар</th><th class="num">Есть</th><th class="num">Едет от других</th><th class="num">Расход/день</th><th class="num">Было в контракте</th><th class="num">Станет</th><th class="num">Сумма</th><th></th></tr></thead><tbody>
+    ${g.items.map(i => `<tr><td>${esc(i.name)}</td><td class="num">${i.stock}</td><td class="num">${i.transit || '—'}</td><td class="num">${i.rate ? i.rate.toFixed(1) : '—'}</td><td class="num mini">${i.was || '—'}</td><td class="num"><b>${i.amount}</b></td><td class="num">${fmtMoney(i.amount * i.unit)}</td><td class="mini ${/срезано/.test(i.note) ? 'warn' : ''}">${i.note}</td></tr>`).join('')}
+    </tbody></table>`;
+  const whHtml = plan.whOrders.map(g => `<div class="chart-box" style="padding:8px 12px;margin-bottom:8px">
+      <b>${g.kind === 'import' ? '🌍' : '🏬'} ${esc(g.src.name)} → ${esc(bizName(g.target))}</b>
+      <span class="mini">было ${fmtMoney(g.wasTotal)} → станет ${fmtMoney(g.total)}${g.kind === 'wholesale' && g.total > 0 ? ' + доставка ' + fmtMoney(g.src.fee || 0) : (g.total === 0 ? ' · контракт будет выключен' : '')}${g.hasContract ? '' : (g.kind === 'import' ? ' · <span class="warn">нет контракта с импортёром — позвоните ему в игре, иначе этот заказ пропустится</span>' : ' · контракт будет создан')}</span>
+      ${orderTable(g)}</div>`).join('') || '<div class="mini">Складу ничего заказывать не нужно.</div>';
+  const shopHtml = plan.shopOrders.map(g => `<div class="chart-box" style="padding:8px 12px;margin-bottom:8px">
+      <b>🏬 ${esc(g.src.name)} → ${esc(bizName(g.target))}</b> <span class="mini">было ${fmtMoney(g.wasTotal)} → станет ${fmtMoney(g.total)}${g.total > 0 ? ' + доставка ' + fmtMoney(g.src.fee || 0) : ' · контракт будет выключен'}${g.hasContract ? '' : ' · контракт будет создан'}</span>
+      ${orderTable(g)}</div>`).join('') || '<div class="mini">Прямых заказов магазинам не нужно — всё покрывает склад или запасов хватает.</div>';
+
+  el.innerHTML = `
+    <div class="cards">
+      <div class="card"><div class="label">Цели логисту</div><div class="value">${targetsCount}</div><div class="sub">по ${plan.logistics.length} планам, запас ${shopDays} дн.</div></div>
+      <div class="card blue"><div class="label">Заказы на склад</div><div class="value">${fmtMoney(totalWh)}</div><div class="sub">было ${fmtMoney(plan.whOrders.reduce((a, g) => a + g.wasTotal, 0))} · ${plan.whOrders.length} контрактов, запас ${whDays} дн.</div></div>
+      <div class="card"><div class="label">Прямые заказы магазинам</div><div class="value">${fmtMoney(totalShops)}</div><div class="sub">было ${fmtMoney(plan.shopOrders.reduce((a, g) => a + g.wasTotal, 0))} · ${plan.shopOrders.length} контрактов, только то, что склад не возит</div></div>
+      <div class="card"><div class="label">Рейс логиста</div><div class="value" style="font-size:18px">02:00 · через ${snap.game ? (((2 - snap.game.hour - 24) % 24 + 24) % 24 || 24) : '—'} ч</div><div class="sub">игра развозит со склада раз в сутки; понедельничный импорт доедет до магазинов только ночью на вторник</div></div>
+      ${dv ? `<div class="card ${dv.lockPeriod ? 'yellow' : ''}"><div class="label">Доставка</div><div class="value" style="font-size:18px">день ${dv.nextDeliveryDay} · через ${dv.nextDeliveryDay - today} дн.</div><div class="sub">${dv.lockPeriod ? 'период блокировки — заказы уйдут на следующую неделю' : 'заказ нужно разместить до воскресенья 20:00'}</div></div>` : ''}
+    </div>
+    ${(() => { const r = supplyIssues(shopDays); return r.issues.length ? `<div class="chart-box" style="padding:8px 12px;margin:8px 0;border-color:var(--${r.issues.some(i => i.level === 'red') ? 'red' : 'yellow'})"><b>⚠ Проверка заказов</b>${r.issues.map(i => `<div class="mini" style="margin-top:4px;color:var(--${i.level})">• ${esc(i.text)}</div>`).join('')}</div>` : `<div class="mini ok" style="margin:8px 0">✔ Дублей и перезаказа не найдено · к оплате в понедельник ~${fmtMoney(r.due)}</div>`; })()}
+    <div class="mini" style="margin:8px 0">Правило: если склад возит товар в магазин — цель логисту и пополнение склада (расход = продажи магазинов-получателей); иначе — прямой заказ магазину. Контракт выбранного поставщика переписывается целиком под расчёт — и в большую, и в меньшую сторону (лишнее из старых заказов уходит). «Едет от других» — только чужие контракты. Всё режется по ёмкости и недельным лимитам.</div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0">
+      <span class="tab ${canWrite ? 'btn-blue' : 'disabled'}" style="padding:10px 18px;font-weight:600" id="supApply">🚀 Применить всё</span>
+      <span class="tab ${canWrite ? '' : 'disabled'}" style="padding:10px 14px" id="supRouteOnly" title="Записать только пункты и цели логиста (по приоритету «кому нужнее»), заказы не трогать">🚚 Только маршрут</span>
+      <span id="supStatus" class="mini">${canWrite ? 'Запишет маршруты логиста, заказы на склад и прямые заказы магазинам — одним подтверждением.' : 'Запись в игру недоступна'}</span>
+    </div>
+    ${renderAutopilotBlock()}
+    <h2>1. Маршруты логиста</h2>${logiHtml}
+    <h2>2. Пополнение склада</h2>${whHtml}
+    <h2>3. Прямые заказы магазинам</h2>${shopHtml}`;
+
+  // любое изменение формы автопилота — в черновик, чтобы опрос игры его не затёр
+  const apForm = () => ({
+    enabled: el.querySelector('#apEnabled').checked, mode: el.querySelector('#apMode').value,
+    hour: +el.querySelector('#apHour').value, shopDays: +document.getElementById('supShopDays').value || 7, whDays: +document.getElementById('supWhDays').value || 14,
+    weeklyBudget: +el.querySelector('#apBudget').value || 0, repeating: el.querySelector('#apRepeat').checked,
+    autoDest: el.querySelector('#apAutoDest').checked,
+    orderDays: [...el.querySelectorAll('.apDay:checked')].map(x => x.value).join(',') || 'Saturday',
+  });
+  ['#apEnabled', '#apMode', '#apHour', '#apBudget', '#apRepeat', '#apAutoDest'].forEach(id => {
+    const f = el.querySelector(id); if (f) f.addEventListener('input', () => { apDraft = apForm(); }); if (f) f.addEventListener('change', () => { apDraft = apForm(); });
+  });
+  el.querySelectorAll('.apDay').forEach(f => f.addEventListener('change', () => { apDraft = apForm(); }));
+  const apSave = el.querySelector('#apSave');
+  if (apSave) apSave.addEventListener('click', async () => {
+    const cfg = apForm();
+    if (cfg.enabled && cfg.mode === 'apply' && !confirm('Автопилот будет сам размещать заказы и менять маршруты логиста в игре. Включить режим «применять»?')) return;
+    const st = el.querySelector('#apStatus');
+    try { const r = await postJson('/api/autopilot/config', cfg); if (r.ok) apDraft = null; st.innerHTML = r.ok ? '<span class="ok">✔ настройки сохранены</span>' : '<span class="warn">✖ ' + esc(r.error || 'ошибка') + '</span>'; }
+    catch (e) { st.innerHTML = '<span class="warn">✖ ' + esc(e.message) + '</span>'; }
+  });
+  const apRun = el.querySelector('#apRun');
+  if (apRun) apRun.addEventListener('click', async () => {
+    const mode = el.querySelector('#apMode').value;
+    if (!confirm(mode === 'apply' ? 'Запустить автопилот сейчас в режиме «применять»? Заказы будут размещены в игре.' : 'Запустить расчёт сейчас? Результат попадёт в журнал, в игру ничего не запишется.')) return;
+    const st = el.querySelector('#apStatus'); st.textContent = 'Считаю…';
+    try {
+      const r = await postJson('/api/autopilot/run', {});
+      st.innerHTML = r.ok ? `<span class="ok">✔ целей ${r.targets}, заказов ${r.orders}, сумма ${fmtMoney(r.cost || 0)}</span>` : '<span class="warn">✖ ' + esc(r.error || 'ошибка') + '</span>';
+    } catch (e) { st.innerHTML = '<span class="warn">✖ ' + esc(e.message) + '</span>'; }
+  });
+
+  const ro = el.querySelector('#supRouteOnly');
+  if (ro && canWrite) ro.addEventListener('click', async () => {
+    if (!plan.logistics.length) { alert('Планов логиста нет'); return; }
+    if (!confirm(`Записать только маршрут: ${plan.logistics.length} планов, ${targetsCount} целей?
+Заказы у поставщиков не изменятся. Развоз пройдёт ближайшей ночью в 02:00.`)) return;
+    const st = el.querySelector('#supStatus'); const log = [];
+    for (const l of plan.logistics) {
+      try {
+        const r = await postJson('/api/logistics/apply', { planId: l.plan.id, destinations: l.dests.map(d => ({ street: d.street, number: d.number, targets: d.targets.map(t => ({ item: t.item, amount: t.amount })) })) });
+        log.push((r.ok ? '✔ ' : '✖ ') + `маршрут ${l.plan.manager || ''} → ${bizName(l.wh)}: ` + (r.ok ? `${r.destinations} пунктов, ${r.targets} целей` : (r.error || 'ошибка')));
+      } catch (e) { log.push('✖ ' + e.message); }
+    }
+    st.innerHTML = log.map(esc).join('<br>');
+  });
+  const ap = el.querySelector('#supApply');
+  if (ap && canWrite) ap.addEventListener('click', async () => {
+    const repeat = document.getElementById('supRepeat').checked;
+    const doable = plan.whOrders.filter(g => g.kind !== 'import' || g.hasContract);
+    const summary = `Применить всё?\n• маршруты логиста: ${plan.logistics.length} планов, ${targetsCount} целей\n• заказы на склад: ${doable.length} (${fmtMoney(doable.reduce((a, g) => a + money(g), 0))})\n• прямые заказы магазинам: ${plan.shopOrders.length} (${fmtMoney(totalShops)})\n${repeat ? 'Заказы повторяющиеся.' : 'Заказы разовые.'}`;
+    if (!confirm(summary)) return;
+    const st = el.querySelector('#supStatus'); const log = [];
+    const say = () => { st.innerHTML = log.map(esc).join('<br>'); };
+    const run = async (label, url, body) => {
+      try { const r = await postJson(url, body); log.push((r.ok ? '✔ ' : '✖ ') + label + (r.ok ? '' : ': ' + (r.error || 'ошибка')) + ((r.warnings || []).length ? ' — ' + r.warnings.join('; ') : '')); }
+      catch (e) { log.push('✖ ' + label + ': ' + e.message); }
+      say();
+    };
+    for (const l of plan.logistics)
+      await run(`маршрут ${l.plan.manager || ''} → ${bizName(l.wh)}`, '/api/logistics/apply',
+        { planId: l.plan.id, destinations: l.dests.map(d => ({ street: d.street, number: d.number, targets: d.targets.map(t => ({ item: t.item, amount: t.amount })) })) });
+    for (const g of doable) {
+      const items = g.items.map(i => ({ item: i.item, amount: i.amount }));
+      const any = items.some(x => x.amount > 0);
+      if (g.kind === 'import') await run(`склад ${bizName(g.target)} ← ${g.src.name}`, '/api/import/apply', { street: g.target.street, number: g.target.number, importStreet: g.src.street, importNumber: g.src.number, items, repeating: repeat, urgent: false, active: any });
+      else await run(`склад ${bizName(g.target)} ← ${g.src.name}`, '/api/order/apply', { street: g.target.street, number: g.target.number, wholesaleStreet: g.src.street, wholesaleNumber: g.src.number, items, repeating: repeat && any, urgent: false, enabled: any });
+    }
+    for (const g of plan.shopOrders)
+      await run(`${bizName(g.target)} ← ${g.src.name}`, '/api/order/apply', { street: g.target.street, number: g.target.number, wholesaleStreet: g.src.street, wholesaleNumber: g.src.number, items: g.items.map(i => ({ item: i.item, amount: i.amount })), repeating: repeat && g.items.some(i => i.amount > 0), urgent: false, enabled: g.items.some(i => i.amount > 0) });
+    log.push('Готово. Данные обновятся через несколько секунд.'); say();
+  });
+}
+
+/* ================= Логистика: маршруты логиста ================= */
+let logPlanSel = null;
+// Черновик маршрута: planId → [{ key, targets: {item: amount} }]. Пока не применён — живёт в браузере.
+let logDraft = {}; try { logDraft = JSON.parse(localStorage.getItem('ba_logDraft') || '{}') || {}; } catch (e) { logDraft = {}; }
+function saveLogDraft() { try { localStorage.setItem('ba_logDraft', JSON.stringify(logDraft)); } catch (e) {} }
+
+function renderLogistics() {
+  const el = document.getElementById('logisticsView');
+  const plans = (snap.logistics || {}).plans || [];
+  const sel = document.getElementById('logPlan');
+  if (!plans.length) {
+    sel.innerHTML = '';
+    el.innerHTML = '<div class="empty">Планов логистики нет. Создайте план в игре: BizMan → Менеджеры по логистике → «Добавить план», выберите менеджера и склад.</div>';
+    return;
+  }
+  const srcOf = (pl) => snap.businesses.find(b => b.street === pl.sourceStreet && b.number === pl.sourceNumber);
+  sel.innerHTML = plans.map(pl => {
+    const src = srcOf(pl);
+    return `<option value="${esc(pl.id)}">${esc(pl.manager || 'без менеджера')} → ${esc(src ? bizName(src) : 'склад не выбран')}</option>`;
+  }).join('');
+  if (!plans.some(pl => pl.id === logPlanSel)) logPlanSel = plans[0].id;
+  sel.value = logPlanSel;
+  const plan = plans.find(pl => pl.id === logPlanSel);
+  const src = srcOf(plan);
+  const days = Math.max(1, parseInt(document.getElementById('logDays').value) || 7);
+
+  // черновик: если его нет — берём то, что уже в игре
+  if (!logDraft[plan.id]) {
+    logDraft[plan.id] = (plan.destinations || []).map(d => ({
+      key: d.street + '|' + d.number,
+      targets: Object.fromEntries((d.targets || []).map(t => [t.item, t.target])),
+    }));
+  }
+  const draft = logDraft[plan.id];
+  const max = plan.maxDestinations || 0;
+
+  const shops = snap.businesses.filter(b => b.hasBusiness && !isWarehouse(b));
+  const stockOf = (item) => ((src && src.inventory) || []).find(i => i.item === item);
+  const shopByKey = (k) => shops.find(b => bkeyOf(b) === k);
+
+  const blocks = draft.map((d, idx) => {
+    const shop = shopByKey(d.key);
+    const options = shops.map(b => `<option value="${esc(bkeyOf(b))}" ${bkeyOf(b) === d.key ? 'selected' : ''}>${esc(bizName(b))}</option>`).join('');
+    // товары: что продаёт магазин ∪ что уже в цели ∪ что лежит на складе
+    const inv = new Map(((shop && shop.inventory) || []).map(i => [i.item, i]));
+    const items = [...new Set([...inv.keys(), ...Object.keys(d.targets), ...((src && src.inventory) || []).map(i => i.item)])];
+    const rows = items.map(item => {
+      const i = inv.get(item), rate = i ? (i.soldPerDay || 0) : 0;
+      const target = d.targets[item] || 0;
+      const st = stockOf(item);
+      const shelf = i ? (i.amount || 0) : 0;
+      const suggest = Math.ceil(rate * days);
+      const name = (i && i.name) || (st && st.name) || pretty(item);
+      return `<tr>
+        <td>${esc(name)}</td>
+        <td class="num">${st ? st.amount : '<span class="mini">нет на складе</span>'}</td>
+        <td class="num">${shelf}</td>
+        <td class="num">${rate ? rate.toFixed(1) : '—'}</td>
+        <td class="num">${suggest || '—'}</td>
+        <td class="num"><input class="plan-in log-t" type="number" min="0" data-d="${idx}" data-item="${esc(item)}" value="${target}"></td>
+        <td class="num">${target && rate ? (target / rate).toFixed(1) + ' дн.' : '—'}</td>
+        <td class="num ${target && target > shelf ? 'ok' : 'mini'}" title="логист довозит только до минимального остатка: цель − сейчас в магазине, не больше, чем лежит на складе">${target ? Math.max(0, Math.min(target - shelf, st ? st.amount : 0)) || 'ничего' : '—'}</td></tr>`;
+    }).join('');
+    return `<div class="chart-box" style="padding:10px 12px;margin-bottom:10px">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+        <b>Пункт №${idx + 1}</b>
+        <select class="plan-in log-dest" data-d="${idx}" style="width:auto">${options}</select>
+        <span class="tab log-fill" data-d="${idx}" style="padding:4px 10px">↻ по продажам (${days} дн.)</span>
+        <span class="tab log-del" data-d="${idx}" style="padding:4px 10px">✖ удалить пункт</span>
+      </div>
+      <table><thead><tr><th>Товар</th><th class="num">На складе</th><th class="num">В магазине</th><th class="num">Продажи/день</th><th class="num">Рекомендация</th><th class="num">Минимальный остаток</th><th class="num">Хватит</th><th class="num">Привезёт ночью</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="8" class="mini">У магазина нет товаров</td></tr>'}</tbody></table></div>`;
+  }).join('');
+
+  const canWrite = !!(snap.game && snap.game.canWrite);
+  el.innerHTML = `
+    <div class="cards">
+      <div class="card"><div class="label">Менеджер</div><div class="value" style="font-size:18px">${esc(plan.manager || '—')}</div><div class="sub">склад: ${esc(src ? bizName(src) : '—')}</div></div>
+      <div class="card ${max && draft.length > max ? 'red' : ''}"><div class="label">Пунктов назначения</div><div class="value">${draft.length} / ${max || '—'}</div>
+        <div class="sub">лимит: машины склада + навык логиста</div></div>
+      <div class="card"><div class="label">Планов всего</div><div class="value">${plans.length}</div><div class="sub">переключаются вверху</div></div>
+    </div>
+    <div class="mini" style="margin:8px 0">Логист развозит товар со склада так, чтобы в магазине было не меньше «минимального остатка» — если в магазине уже больше цели, он ничего не везёт. Кнопка «по продажам» ставит цель = продажи в день × ${days}. Ноль означает «не возить».</div>
+    ${blocks || '<div class="empty">Пунктов назначения нет — добавьте первый</div>'}
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+      <span class="tab ${draft.length < max || !max ? '' : 'disabled'}" style="padding:8px 14px" id="logAdd">➕ Добавить пункт</span>
+      <span class="tab ${canWrite ? 'btn-blue' : 'disabled'}" style="padding:8px 16px" id="logApply">💾 Применить в игре</span>
+      <span class="tab" style="padding:8px 14px" id="logReset">↺ Взять из игры</span>
+      <span id="logStatus" class="mini">${canWrite ? 'Заменит маршрут этого плана целиком.' : 'Запись в игру недоступна'}</span>
+    </div>`;
+
+  // редактирование черновика
+  el.querySelectorAll('select.log-dest').forEach(sl => sl.addEventListener('change', () => {
+    draft[+sl.dataset.d].key = sl.value; saveLogDraft(); renderLogistics();
+  }));
+  el.querySelectorAll('input.log-t').forEach(inp => inp.addEventListener('change', () => {
+    const d = draft[+inp.dataset.d], v = Math.max(0, parseInt(inp.value) || 0);
+    if (v > 0) d.targets[inp.dataset.item] = v; else delete d.targets[inp.dataset.item];
+    saveLogDraft(); renderLogistics();
+  }));
+  el.querySelectorAll('.log-fill').forEach(btn => btn.addEventListener('click', () => {
+    const d = draft[+btn.dataset.d], shop = shopByKey(d.key);
+    ((shop && shop.inventory) || []).forEach(i => {
+      const v = Math.ceil((i.soldPerDay || 0) * days);
+      if (v > 0) d.targets[i.item] = v;
+    });
+    saveLogDraft(); renderLogistics();
+  }));
+  el.querySelectorAll('.log-del').forEach(btn => btn.addEventListener('click', () => {
+    draft.splice(+btn.dataset.d, 1); saveLogDraft(); renderLogistics();
+  }));
+  const add = el.querySelector('#logAdd');
+  if (add) add.addEventListener('click', () => {
+    if (max && draft.length >= max) { alert('Достигнут лимит пунктов: ' + max + '. Нужна ещё машина на складе или логист с более высоким навыком.'); return; }
+    const used = new Set(draft.map(x => x.key));
+    const free = shops.find(b => !used.has(bkeyOf(b))) || shops[0];
+    if (!free) { alert('Нет магазинов'); return; }
+    draft.push({ key: bkeyOf(free), targets: {} }); saveLogDraft(); renderLogistics();
+  });
+  const reset = el.querySelector('#logReset');
+  if (reset) reset.addEventListener('click', () => { delete logDraft[plan.id]; saveLogDraft(); renderLogistics(); });
+
+  const ap = el.querySelector('#logApply');
+  if (ap && canWrite) ap.addEventListener('click', async () => {
+    const destinations = draft.map(d => {
+      const b = shopByKey(d.key); if (!b) return null;
+      return { street: b.street, number: b.number, targets: Object.entries(d.targets).map(([item, amount]) => ({ item, amount })) };
+    }).filter(Boolean);
+    if (!confirm(`Записать маршрут: ${destinations.length} пунктов для ${plan.manager || 'плана'}?\nТекущий маршрут этого плана будет заменён.`)) return;
+    const st = el.querySelector('#logStatus'); st.textContent = 'Применяю…';
+    try {
+      const res = await postJson('/api/logistics/apply', { planId: plan.id, destinations });
+      st.innerHTML = res.ok
+        ? `<span class="ok">✔ Записано: ${res.destinations} пунктов, ${res.targets} позиций.</span> ${(res.warnings || []).map(esc).join('; ')}`
+        : `<span class="warn">✖ ${esc(res.error || 'ошибка')}</span>`;
+      if (res.ok) delete logDraft[plan.id];
+    } catch (e) { st.innerHTML = `<span class="warn">✖ ${esc(e.message)}</span>`; }
+  });
+}
+
+/* ================= Аренда: свободные здания ================= */
+let rentTypeSel = 'all', rentHoodSel = 'all', rentSortSel = 'rent';
+function renderRentals() {
+  const el = document.getElementById('rentalsView');
+  const all = snap.rentals || [];
+  if (!all.length) {
+    el.innerHTML = '<div class="empty">Свободных зданий не найдено. Данные обновляются раз в полминуты — если только что запустили игру, подождите.</div>';
+    return;
+  }
+  // выпадающие списки строим по фактическим данным
+  const fill = (id, values, cur, allLabel) => {
+    const sel = document.getElementById(id);
+    const opts = [...new Map(values.map(v => [v.key, v.label])).entries()].sort((a, c) => String(a[1]).localeCompare(String(c[1]), 'ru'));
+    sel.innerHTML = `<option value="all">${allLabel}</option>` + opts.map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join('');
+    sel.value = opts.some(o => o[0] === cur) ? cur : 'all';
+    return sel.value;
+  };
+  rentTypeSel = fill('rentType', all.map(r => ({ key: r.type, label: r.typeName || pretty(r.type) })), rentTypeSel, 'Все типы зданий');
+  rentHoodSel = fill('rentHood', all.map(r => ({ key: r.neighborhood, label: r.neighborhoodName || pretty(r.neighborhood) })), rentHoodSel, 'Все районы');
+  const maxRent = parseFloat(document.getElementById('rentMax').value);
+  const minSqm = parseFloat(document.getElementById('rentSqm').value);
+  const sortSel = document.getElementById('rentSort'); sortSel.value = rentSortSel;
+
+  const perSqm = (r) => r.sqm ? r.rentPerDay / r.sqm : 0;
+  const onlyFree = document.getElementById('rentFree').checked;
+  let list = all.filter(r => (!onlyFree || !r.ownerBlocked)
+    && (rentTypeSel === 'all' || r.type === rentTypeSel)
+    && (rentHoodSel === 'all' || r.neighborhood === rentHoodSel)
+    && (isNaN(maxRent) || r.rentPerDay <= maxRent)
+    && (isNaN(minSqm) || r.sqm >= minSqm));
+  const cmp = {
+    rent: (a, c) => a.rentPerDay - c.rentPerDay,
+    sqm: (a, c) => c.sqm - a.sqm,
+    perSqm: (a, c) => perSqm(a) - perSqm(c),
+    traffic: (a, c) => c.traffic - a.traffic,
+    capacity: (a, c) => c.capacity - a.capacity,
+  }[rentSortSel] || ((a, c) => a.rentPerDay - c.rentPerDay);
+  list = [...list].sort(cmp);
+
+  const cheapest = list.length ? list.reduce((m, r) => r.rentPerDay < m.rentPerDay ? r : m) : null;
+  const rows = list.map(r => `<tr>
+      <td>${esc(r.address || (r.number + ' ' + (r.streetName || pretty(r.street))))}${r.dlc && r.dlc !== 'None' ? ' <span class="mini">DLC</span>' : ''}</td>
+      <td>${esc(r.typeName || pretty(r.type))}</td>
+      <td>${esc(r.neighborhoodName || pretty(r.neighborhood))}</td>
+      <td>${esc(r.sizeName || pretty(r.size))}</td>
+      <td class="num">${r.sqm || '—'}</td>
+      <td class="num">${r.capacity > 0 ? r.capacity : '—'}</td>
+      <td class="num ${r.traffic >= 70 ? 'pos' : r.traffic < 40 ? 'neg' : ''}">${r.traffic || '—'}</td>
+      <td class="num">${fmtMoney(r.rentPerDay)}</td>
+      <td class="num">${r.sqm ? fmtMoney(perSqm(r)) : '—'}</td>
+      <td class="num">${r.marketValue ? fmtMoney(r.marketValue) : '—'}</td>
+      <td>${r.ownedByPlayer ? '<span class="ok">ваше здание</span>'
+        : r.owner ? (r.ownerBlocked ? `<span class="warn">${esc(r.owner)} · аренду не даёт</span>` : esc(r.owner))
+        : '<span class="mini">город</span>'}</td></tr>`).join('');
+
+  el.innerHTML = `
+    <div class="cards">
+      <div class="card"><div class="label">Найдено зданий</div><div class="value">${list.length}</div><div class="sub">всего свободных: ${all.length}</div></div>
+      <div class="card"><div class="label">Аренда от</div><div class="value">${cheapest ? fmtMoney(cheapest.rentPerDay) : '—'}</div><div class="sub">${cheapest ? esc(cheapest.address || (cheapest.number + ' ' + cheapest.streetName)) : ''}</div></div>
+      <div class="card ${list.filter(r => r.ownerBlocked).length ? 'yellow' : ''}"><div class="label">Не сдают конкуренты</div><div class="value">${list.filter(r => r.ownerBlocked).length}</div><div class="sub">зданий под фильтром</div></div>
+      <div class="card"><div class="label">Медиана за м²</div><div class="value">${list.length ? fmtMoney([...list].map(perSqm).sort((a, c) => a - c)[Math.floor(list.length / 2)]) : '—'}</div><div class="sub">в день</div></div>
+    </div>
+    <div class="mini" style="margin:8px 0">Трафик — проходимость места (влияет на выручку розницы и на аренду). Вместимость — сколько покупателей помещается при этом типе здания.</div>
+    <table><thead><tr><th>Адрес</th><th>Тип</th><th>Район</th><th>Класс</th><th class="num">м²</th><th class="num">Вместимость</th><th class="num">Трафик</th><th class="num">Аренда/день</th><th class="num">$/м² в день</th><th class="num">Оценка выкупа</th><th>Владелец</th></tr></thead><tbody>${rows || '<tr><td colspan="11" class="mini">Под фильтр ничего не подошло</td></tr>'}</tbody></table>`;
 }
 
 /* ================= Аналитика периода ================= */
@@ -1424,98 +2473,274 @@ function renderPrices() {
   const sat = b.satisfaction ? b.satisfaction.pricing : null;
   const rows = (b.prices || []).map(p => {
     const cur = edits[p.item] != null ? edits[p.item] : p.price;
-    const vsMarket = p.market ? (cur - p.market) / p.market * 100 : null;
+    const ref = p.reference || p.market || p.defaultMarket || 0;
+    const vsMarket = ref ? (cur - ref) / ref * 100 : null;
     const margin = p.wholesale ? (cur - p.wholesale) / cur * 100 : null;
-    const hint = vsMarket != null && vsMarket > 15 ? '<span class="warn">выше рынка</span>' : vsMarket != null && vsMarket < -15 ? '<span style="color:var(--yellow)">сильно ниже рынка</span>' : '<span class="ok">ок</span>';
+    const hint = p.maxAcceptable && cur > p.maxAcceptable ? '<span class="warn">выше потолка — не купят</span>'
+      : vsMarket != null && vsMarket > 15 ? '<span style="color:var(--yellow)">дороже эталона</span>'
+      : vsMarket != null && vsMarket < -15 ? '<span style="color:var(--yellow)">сильно ниже эталона</span>' : '<span class="ok">ок</span>';
     return `<tr>
       <td>${esc(p.name)}</td>
       <td class="num"><input class="plan-in pr-in" type="number" step="0.1" min="0" data-item="${esc(p.item)}" value="${cur.toFixed(2)}"></td>
-      <td class="num">${p.market ? fmtMoney(p.market) : '—'}</td>
+      <td class="num" title="min(базовая, минимум конкурентов) — с этим сравнивает покупатель">${ref ? fmtMoney(ref) : '—'}</td>
       <td class="num ${vsMarket == null ? '' : vsMarket > 15 ? 'neg' : vsMarket < -15 ? '' : 'pos'}">${vsMarket == null ? '—' : (vsMarket >= 0 ? '+' : '') + vsMarket.toFixed(0) + '%'}</td>
+      <td class="num" title="базовая × индекс цен района (+ бонус монополии)">${p.optimal ? fmtMoney(p.optimal) : '—'}</td>
+      <td class="num" title="дороже — самый бедный класс покупателей откажется">${p.maxAcceptable ? fmtMoney(p.maxAcceptable) : '—'}</td>
+      <td class="num">${p.market ? fmtMoney(p.market) : '—'}</td>
       <td class="num">${p.wholesale ? fmtMoney(p.wholesale) : '—'}</td>
       <td class="num ${margin == null ? '' : margin < 15 ? 'neg' : 'pos'}">${margin == null ? '—' : margin.toFixed(0) + '%'}</td>
       <td class="num">${p.defaultMarket ? fmtMoney(p.defaultMarket) : '—'}</td>
       <td>${hint}${edits[p.item] != null ? ' <span class="mini">(изменено)</span>' : ''}</td></tr>`;
   }).join('');
   const canWrite = !!(snap.game && snap.game.canWrite);
+  // Наценки настраиваются и запоминаются: к рынку (цена конкурентов) и к закупке (себестоимость).
+  const mkMarket = +(localStorage.getItem('ba_mkMarket') ?? 5);
+  const mkWhole = +(localStorage.getItem('ba_mkWhole') ?? 40);
+  const sign = (v) => (v >= 0 ? '+' : '') + v;
   el.innerHTML = `
     <div class="cards">
       <div class="card ${sat == null ? '' : sat >= 70 ? 'green' : sat >= 40 ? 'yellow' : 'red'}"><div class="label">Оценка цен покупателями</div><div class="value">${sat == null ? '—' : sat}</div><div class="sub">удовлетворённость «Цены»</div></div>
-      <div class="card"><div class="label">Товаров</div><div class="value">${(b.prices || []).length}</div><div class="sub">${(b.prices || []).filter(p => p.market && p.price > p.market * 1.15).length} выше рынка на 15%+</div></div>
+      <div class="card"><div class="label">Товаров</div><div class="value">${(b.prices || []).length}</div><div class="sub">${(b.prices || []).filter(p => p.maxAcceptable && p.price > p.maxAcceptable).length} выше потолка · ${(b.prices || []).filter(p => (p.reference || p.market) && p.price > (p.reference || p.market) * 1.15).length} дороже эталона на 15%+</div></div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-      <span class="tab" id="prMarket">= рынок</span><span class="tab" id="prMarket5">= рынок −5%</span><span class="tab" id="prMarketP5">= рынок +5%</span>
-      <span class="tab" id="prMargin">закупка +40%</span><span class="tab" id="prReset">сбросить правки</span>
+      <label class="mini" title="Пресеты и «Применить» действуют на все бизнесы, где есть эти товары"><input type="checkbox" id="prAll" ${pricesAll ? 'checked' : ''}> все бизнесы</label>
+      <span class="tab" id="prOptimal" title="базовая × индекс цен района, минус 1% для запаса: максимум денег, при этом ниже потолка для всех классов покупателей">= оптимум −1%</span>
+      <span class="tab" id="prRef" title="min(базовая, минимум у конкурентов) — безопасно, жалоб не будет">= эталон</span>
+      <span class="tab" id="prMarket" title="минимум у конкурентов (может быть выше эталона!)">= мин. конкурентов</span>
+      <label style="font-size:12px;color:var(--muted)">к рынку: <input id="prMkMarket" class="plan-in" type="number" step="1" min="-90" max="900" value="${mkMarket}">%</label>
+      <span class="tab" id="prMarketAdj" title="Цена = минимальная цена конкурентов ${sign(mkMarket)}%">= рынок ${sign(mkMarket)}%</span>
+      <label style="font-size:12px;color:var(--muted)">к закупке: <input id="prMkWhole" class="plan-in" type="number" step="1" min="0" max="900" value="${mkWhole}">%</label>
+      <span class="tab" id="prMargin" title="Цена = закупочная цена ${sign(mkWhole)}%. Это наценка на себестоимость: +${mkWhole}% даёт маржу ${(mkWhole / (100 + mkWhole) * 100).toFixed(0)}% от цены">закупка ${sign(mkWhole)}%</span>
+      <span class="tab" id="prReset">сбросить правки</span>
     </div>
-    <table><thead><tr><th>Товар</th><th class="num">Наша цена</th><th class="num">Мин. у конкурентов</th><th class="num">к рынку</th><th class="num">Закупка</th><th class="num">Маржа</th><th class="num">Базовая</th><th>Оценка</th></tr></thead><tbody>${rows}</tbody></table>
+    <table><thead><tr><th>Товар</th><th class="num">Наша цена</th><th class="num">Эталон</th><th class="num">к эталону</th><th class="num">Оптимум</th><th class="num">Потолок</th><th class="num">Мин. у конкурентов</th><th class="num">Закупка</th><th class="num">Маржа</th><th class="num">Базовая</th><th>Оценка</th></tr></thead><tbody>${rows}</tbody></table>
     <div style="display:flex;gap:10px;align-items:center;margin-top:10px">
       <span class="tab ${canWrite ? 'btn-blue' : 'disabled'}" style="padding:8px 16px" id="prApply">💲 Применить цены в игре</span>
       <span id="prStatus" class="mini">${canWrite ? 'Запишет только изменённые цены.' : 'Запись в игру недоступна'}</span>
     </div>`;
-  const setAll = (f) => { (b.prices || []).forEach(p => { const v = f(p); if (v != null && v >= 0) edits[p.item] = Math.round(v * 100) / 100; }); renderPrices(); };
+  // в режиме «все бизнесы» пресет правит цены во всех магазинах с этим товаром
+  const targets = () => pricesAll ? list : [b];
+  const setAll = (f) => {
+    targets().forEach(tb => { const e2 = priceEdits[bkeyOf(tb)] = priceEdits[bkeyOf(tb)] || {}; (tb.prices || []).forEach(p => { const v = f(p); if (v != null && v >= 0) e2[p.item] = Math.round(v * 100) / 100; }); });
+    renderPrices();
+  };
+  el.querySelector('#prAll').addEventListener('change', e => { pricesAll = e.target.checked; renderPrices(); });
+  el.querySelector('#prOptimal').onclick = () => setAll(p => p.optimal ? Math.floor(p.optimal * 0.99 * 100) / 100 : null);
+  el.querySelector('#prRef').onclick = () => setAll(p => p.reference || null);
   el.querySelector('#prMarket').onclick = () => setAll(p => p.market || null);
-  el.querySelector('#prMarket5').onclick = () => setAll(p => p.market ? p.market * 0.95 : null);
-  el.querySelector('#prMarketP5').onclick = () => setAll(p => p.market ? p.market * 1.05 : null);
-  el.querySelector('#prMargin').onclick = () => setAll(p => p.wholesale ? p.wholesale * 1.4 : null);
-  el.querySelector('#prReset').onclick = () => { priceEdits[bkeyOf(b)] = {}; renderPrices(); };
+  el.querySelector('#prMarketAdj').onclick = () => setAll(p => p.market ? p.market * (1 + mkMarket / 100) : null);
+  el.querySelector('#prMargin').onclick = () => setAll(p => p.wholesale ? p.wholesale * (1 + mkWhole / 100) : null);
+  const savePct = (inp, key, lo, hi) => inp.addEventListener('change', () => {
+    const v = Math.max(lo, Math.min(hi, Math.round(parseFloat(inp.value) || 0)));
+    localStorage.setItem(key, v); renderPrices();
+  });
+  savePct(el.querySelector('#prMkMarket'), 'ba_mkMarket', -90, 900);
+  savePct(el.querySelector('#prMkWhole'), 'ba_mkWhole', 0, 900);
+  el.querySelector('#prReset').onclick = () => { targets().forEach(tb => { priceEdits[bkeyOf(tb)] = {}; }); renderPrices(); };
   el.querySelectorAll('input.pr-in').forEach(inp => inp.addEventListener('change', () => { const v = parseFloat(inp.value); if (!isNaN(v)) edits[inp.dataset.item] = Math.max(0, Math.min(10000, v)); renderPrices(); }));
   const ap = el.querySelector('#prApply');
   if (ap && canWrite) ap.addEventListener('click', async () => {
-    const changed = (b.prices || []).filter(p => edits[p.item] != null && Math.abs(edits[p.item] - p.price) > 0.001).map(p => ({ item: p.item, price: edits[p.item] }));
-    if (!changed.length) { alert('Нет изменённых цен'); return; }
-    if (!confirm(`Применить ${changed.length} цен в игре для ${bizName(b)}?`)) return;
-    const st = el.querySelector('#prStatus'); st.textContent = 'Применяю…';
-    try {
-      const res = await postJson('/api/prices/set', { street: b.street, number: b.number, prices: changed });
-      st.innerHTML = res.ok ? `<span class="ok">✔ Обновлено ${res.changed} цен.</span>` : `<span class="warn">✖ ${esc(res.error || 'ошибка')}</span>`;
-      if (res.ok) priceEdits[bkeyOf(b)] = {};
-    } catch (e) { st.innerHTML = `<span class="warn">✖ ${esc(e.message)}</span>`; }
+    const jobs = targets().map(tb => {
+      const e2 = priceEdits[bkeyOf(tb)] || {};
+      return { tb, changed: (tb.prices || []).filter(p => e2[p.item] != null && Math.abs(e2[p.item] - p.price) > 0.001).map(p => ({ item: p.item, price: e2[p.item] })) };
+    }).filter(j => j.changed.length);
+    if (!jobs.length) { alert('Нет изменённых цен'); return; }
+    const total = jobs.reduce((a, j) => a + j.changed.length, 0);
+    if (!confirm(pricesAll ? `Применить ${total} цен в ${jobs.length} бизнесах?\n${jobs.map(j => bizName(j.tb) + ': ' + j.changed.length).join(', ')}` : `Применить ${total} цен в игре для ${bizName(b)}?`)) return;
+    const st = el.querySelector('#prStatus'); st.textContent = 'Применяю…'; const log = [];
+    for (const j of jobs) {
+      try {
+        const res = await postJson('/api/prices/set', { street: j.tb.street, number: j.tb.number, prices: j.changed });
+        log.push((res.ok ? '✔ ' : '✖ ') + bizName(j.tb) + ': ' + (res.ok ? res.changed + ' цен' : (res.error || 'ошибка')));
+        if (res.ok) priceEdits[bkeyOf(j.tb)] = {};
+      } catch (e) { log.push('✖ ' + bizName(j.tb) + ': ' + e.message); }
+    }
+    st.innerHTML = log.map(esc).join(' · ');
   });
 }
 
 /* ================= Кадры: советник по найму и удержанию ================= */
+let hrMode = 'staff', hrRoleSel = 'all', hrBizSel = 'all', hrSortSel = 'role', hrPicked = new Set();
+let hrAssignSel = '', hrHireSel = ''; // выбранный бизнес в списках «Перевести» / «Принять» — переживает перерисовку
+
+// Бизнесы, куда можно назначить сотрудника: у здания есть список принимаемых навыков.
+function hrBusinesses() { return snap.businesses.filter(b => b.hasBusiness || isWarehouse(b)); }
+function hrFits(person, b) {
+  const allowed = b.allowedSkills || [];
+  if (!allowed.length) return true;
+  const mine = (person.skills || []).map(x => x.name).concat([person.skill]);
+  return allowed.some(a => mine.includes(a));
+}
+function hrFillSelect(id, values, cur, allLabel) {
+  const sel = document.getElementById(id);
+  const opts = [...new Map(values.map(v => [v.key, v.label])).entries()];
+  sel.innerHTML = `<option value="all">${allLabel}</option>` + opts.map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join('');
+  sel.value = opts.some(o => o[0] === cur) ? cur : 'all';
+  return sel.value;
+}
+
 function renderHr() {
   const el = document.getElementById('hrView');
   const hr = snap.hr || { staff: [], candidates: [] };
-  const bizOf = (s) => snap.businesses.find(b => b.street === s.street && b.number === s.number);
-  const risk = (s) => s.quitWarning || s.satisfaction <= 20 ? 'высокий' : (s.unfulfilled || []).length || s.satisfaction < 45 ? 'средний' : 'низкий';
-  const staff = [...(hr.staff || [])].sort((a, c) => a.satisfaction - c.satisfaction);
-  const highRisk = staff.filter(s => risk(s) === 'высокий').length;
-  const badge = document.getElementById('hrBadge'); badge.style.display = highRisk ? '' : 'none'; badge.textContent = highRisk;
-  const rows = staff.map(s => { const r = risk(s); const b = bizOf(s); return `<tr class="${r === 'высокий' ? 'risk-high' : ''}">
-      <td>${esc(s.name)}${s.absent ? ' 🤒' : ''}<div class="mini">${esc(s.skill || '')} · ${b ? esc(bizName(b)) : '—'}</div></td>
-      <td class="num">${fmtMoney(s.wage)}/ч</td>
-      <td><div class="hbar" style="margin:0"><div style="width:${s.satisfaction}%;background:${satColor(s.satisfaction)}"></div></div><span class="mini">${s.satisfaction}</span></td>
-      <td class="${r === 'высокий' ? 'warn' : r === 'средний' ? '' : 'ok'}">${r}${s.quitWarning ? ' · ⚠ предупредил об уходе' : ''}</td>
-      <td>${(s.unfulfilled || []).map(d => `<span class="chip" style="color:var(--red)">✖ ${esc(d)}</span>`).join('') || '<span class="mini">все требования выполнены</span>'}</td>
-      <td class="mini">${(s.unfulfilled || []).length ? 'выполнить требования: ' + s.unfulfilled.join(', ') : s.satisfaction < 45 ? 'проверить зарплату/условия' : '—'}</td></tr>`; }).join('');
-  // дефицит навыков по бизнесам: требуется (required) vs назначено (weeklyHours по навыку)
+  document.getElementById('hrModeStaff').classList.toggle('active', hrMode === 'staff');
+  document.getElementById('hrModeCand').classList.toggle('active', hrMode === 'candidates');
+  const bizOf = (s2) => snap.businesses.find(b => b.street === s2.street && b.number === s2.number);
+  const risk = (s2) => s2.quitWarning || s2.satisfaction <= 20 ? 'высокий' : (s2.unfulfilled || []).length || s2.satisfaction < 45 ? 'средний' : 'низкий';
+  const riskRank = (s2) => ({ 'высокий': 0, 'средний': 1, 'низкий': 2 })[risk(s2)];
+  const staffAll = hr.staff || [];
+  const highRisk = staffAll.filter(s2 => risk(s2) === 'высокий').length;
+  const training = staffAll.filter(s2 => s2.training);
+  const badge = document.getElementById('hrBadge'); if (badge) { badge.style.display = highRisk ? '' : 'none'; badge.textContent = highRisk; }
+
+  // фильтры строим по фактическим данным
+  const roleList = [...new Set(staffAll.concat(hr.candidates || []).map(s2 => s2.skill).filter(Boolean))]
+    .sort((a, c) => roleRank(a) - roleRank(c) || a.localeCompare(c, 'ru'))
+    .map(r => ({ key: r, label: r + ' (' + staffAll.filter(s2 => s2.skill === r).length + ')' }));
+  hrRoleSel = hrFillSelect('hrRole', roleList, hrRoleSel, 'Все должности');
+  hrBizSel = hrFillSelect('hrBiz', hrBusinesses().map(b => ({ key: bkeyOf(b), label: bizName(b) }))
+    .concat([{ key: '__none__', label: 'Без бизнеса' }]), hrBizSel, 'Все бизнесы');
+  const q = (document.getElementById('hrSearch').value || '').trim().toLowerCase();
+  document.getElementById('hrSort').value = hrSortSel;
+
+  const cmp = {
+    role: (a, c) => roleRank(a.skill) - roleRank(c.skill) || String(a.skill).localeCompare(String(c.skill), 'ru') || (c.skillValue || 0) - (a.skillValue || 0),
+    biz: (a, c) => { const ba = bizOf(a), bc = bizOf(c); return String(ba ? bizName(ba) : 'яя').localeCompare(String(bc ? bizName(bc) : 'яя'), 'ru') || roleRank(a.skill) - roleRank(c.skill) || (c.skillValue || 0) - (a.skillValue || 0); },
+    skill: (a, c) => (c.skillValue || 0) - (a.skillValue || 0),
+    risk: (a, c) => riskRank(a) - riskRank(c) || a.satisfaction - c.satisfaction,
+    wage: (a, c) => c.wage - a.wage,
+    name: (a, c) => String(a.name).localeCompare(String(c.name), 'ru'),
+  }[hrSortSel] || ((a, c) => 0);
+
+  const staff = staffAll.filter(s2 => (hrRoleSel === 'all' || s2.skill === hrRoleSel)
+    && (hrBizSel === 'all' || (hrBizSel === '__none__' ? !s2.street : (s2.street + '|' + s2.number) === hrBizSel))
+    && (!q || String(s2.name).toLowerCase().includes(q))).sort(cmp);
+
+  // дефицит навыков по бизнесам
   const gaps = [];
   snap.businesses.filter(b => b.staff).forEach(b => {
     const have = {}; (b.staff.employees || []).forEach(e => { if (!e.absent) have[e.skill || '—'] = (have[e.skill || '—'] || 0) + (e.weeklyHours || 0); });
     (b.staff.required || []).forEach(r => { const h = have[r.skill] || 0; if (h < r.hours) gaps.push({ b, skill: r.skill, need: r.hours - h, have: h, req: r.hours }); });
   });
-  const gapRows = gaps.map(g => `<tr><td>${esc(bizName(g.b))}</td><td>${esc(g.skill)}</td><td class="num">${g.have}/${g.req} ч</td><td class="warn">не хватает ${g.need} ч/нед → нанять ${g.need >= 30 ? 'на полную' : 'на частичную'} занятость</td></tr>`).join('');
-  const cands = [...(hr.candidates || [])].sort((a, c) => (c.skills || []).reduce((s, x) => s + x.value, 0) - (a.skills || []).reduce((s, x) => s + x.value, 0));
-  const candRows = cands.map(c => { const fit = gaps.find(g => g.skill === c.skill); return `<tr class="${fit ? '' : ''}">
-      <td>${esc(c.name)}<div class="mini">${esc(c.skill || '')} · ${c.fromJobBoard ? 'биржа труда' : 'хедхантер'} · ${c.hoursLeft} ч до истечения</div></td>
-      <td class="num">${fmtMoney(c.wage)}/ч</td>
-      <td>${skillsBlock(c.skills)}</td>
-      <td>${(c.demands || []).map(d => `<span class="chip">❗ ${esc(d)}</span>`).join('')}</td>
-      <td class="${fit ? 'ok' : 'mini'}">${fit ? `закрывает дефицит: ${esc(bizName(fit.b))} · ${esc(fit.skill)}` : 'дефицита по навыку нет'}</td></tr>`; }).join('');
-  el.innerHTML = `
+
+  const cands = [...(hr.candidates || [])].filter(c => (hrRoleSel === 'all' || c.skill === hrRoleSel)
+    && (!q || String(c.name).toLowerCase().includes(q)))
+    .sort((a, c) => (c.skillValue || 0) - (a.skillValue || 0));
+
+  const canWrite = !!(snap.game && snap.game.canWrite);
+  const pickBox = (id) => `<input type="checkbox" class="hr-pick" data-id="${esc(id)}" ${hrPicked.has(id) ? 'checked' : ''}>`;
+  const bizOptions = (cur) => hrBusinesses().map(b => `<option value="${esc(bkeyOf(b))}" ${bkeyOf(b) === cur ? 'selected' : ''}>${esc(bizName(b))}</option>`).join('');
+
+  const cards = `
     <div class="cards">
       <div class="card ${highRisk ? 'red' : 'green'}"><div class="label">Риск увольнения</div><div class="value">${highRisk}</div><div class="sub">сотрудников с высоким риском</div></div>
-      <div class="card"><div class="label">Сотрудников</div><div class="value">${staff.length}</div><div class="sub">средняя удовл. ${staff.length ? Math.round(sumBy(staff, s => s.satisfaction) / staff.length) : '—'}</div></div>
+      <div class="card"><div class="label">Сотрудников</div><div class="value">${staffAll.length}</div><div class="sub">средняя удовл. ${staffAll.length ? Math.round(sumBy(staffAll, s2 => s2.satisfaction) / staffAll.length) : '—'}</div></div>
+      <div class="card ${training.length ? 'blue' : ''}"><div class="label">На обучении</div><div class="value">${training.length}</div>
+        <div class="sub">${training.length ? training.map(t => esc(t.name) + ' → день ' + t.training.endsDay + ', 17:00').join('<br>') : 'никого'}</div></div>
       <div class="card ${gaps.length ? 'yellow' : 'green'}"><div class="label">Дефицит навыков</div><div class="value">${gaps.length}</div><div class="sub">позиций к найму</div></div>
-      <div class="card blue"><div class="label">Кандидатов</div><div class="value">${cands.length}</div><div class="sub">доступно сейчас</div></div>
-    </div>
-    <h2>Удержание</h2>
-    <table><thead><tr><th>Сотрудник</th><th class="num">Ставка</th><th>Удовл.</th><th>Риск ухода</th><th>Невыполненные требования</th><th>Что сделать</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="empty">Нет сотрудников</td></tr>'}</tbody></table>
-    <h2>Дефицит навыков (требуется планировкой vs назначено)</h2>
-    <table><thead><tr><th>Бизнес</th><th>Навык</th><th class="num">Есть/нужно</th><th>Рекомендация</th></tr></thead><tbody>${gapRows || '<tr><td colspan="4" class="empty">Дефицита нет 🎉</td></tr>'}</tbody></table>
-    <h2>Кандидаты</h2>
-    <table><thead><tr><th>Кандидат</th><th class="num">Просит</th><th>Навыки</th><th>Требования</th><th>Подходит</th></tr></thead><tbody>${candRows || '<tr><td colspan="5" class="empty">Нет кандидатов</td></tr>'}</tbody></table>`;
+      <div class="card blue"><div class="label">Кандидатов</div><div class="value">${(hr.candidates || []).length}</div><div class="sub">доступно сейчас</div></div>
+    </div>`;
+
+  if (hrMode === 'candidates') {
+    const rowsC = cands.map(c => {
+      const fit = gaps.find(g => g.skill === c.skill);
+      return `<tr>
+        <td>${canWrite ? pickBox(c.id) : ''}</td>
+        <td>${esc(c.name)}<div class="mini">${esc(c.skill || '')} · ${c.fromJobBoard ? 'биржа труда' : 'хедхантер'} · ${c.hoursLeft} ч до истечения</div></td>
+        <td class="num">${c.skillValue || '—'}</td>
+        <td class="num">${fmtMoney(c.wage)}/ч</td>
+        <td>${skillsBlock(c.skills)}</td>
+        <td>${(c.demands || []).map(d => `<span class="chip">❗ ${esc(d)}</span>`).join('')}</td>
+        <td class="${fit ? 'ok' : 'mini'}">${fit ? 'закрывает дефицит: ' + esc(bizName(fit.b)) + ' · ' + esc(fit.skill) : 'дефицита по навыку нет'}</td></tr>`;
+    }).join('');
+    el.innerHTML = cards + `
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0">
+        <span class="mini">Выбрано: <b id="hrCount">0</b></span>
+        <select id="hrHireBiz" class="plan-in" style="width:auto"><option value="" ${hrHireSel ? '' : 'selected'}>без бизнеса</option>${bizOptions(hrHireSel)}</select>
+        <span class="tab ${canWrite ? 'btn-blue' : 'disabled'}" style="padding:8px 14px" id="hrHire">✔ Принять</span>
+        <span class="tab ${canWrite ? '' : 'disabled'}" style="padding:8px 14px" id="hrReject">✖ Отклонить</span>
+        <span id="hrStatus" class="mini">${canWrite ? 'Принять можно сразу в выбранный бизнес.' : 'Запись в игру недоступна'}</span>
+      </div>
+      <table><thead><tr><th></th><th>Кандидат</th><th class="num">Уровень</th><th class="num">Просит</th><th>Навыки</th><th>Требования</th><th>Подходит</th></tr></thead>
+      <tbody>${rowsC || '<tr><td colspan="7" class="empty">Нет кандидатов</td></tr>'}</tbody></table>`;
+  } else {
+    const rowsS = staff.map(s2 => {
+      const r = risk(s2), b = bizOf(s2), t = s2.training;
+      return `<tr class="${r === 'высокий' ? 'risk-high' : ''}">
+        <td>${canWrite ? pickBox(s2.id) : ''}</td>
+        <td>${esc(s2.name)}${s2.absent ? ' 🤒' : ''}${t ? ' 🎓' : ''}<div class="mini">${esc(s2.skill || '')} · ${b ? esc(bizName(b)) : '<span class="warn">без бизнеса</span>'}</div></td>
+        <td class="num"><b>${s2.skillValue || '—'}</b></td>
+        <td class="num">${fmtMoney(s2.wage)}/ч</td>
+        <td><div class="hbar" style="margin:0"><div style="width:${s2.satisfaction}%;background:${satColor(s2.satisfaction)}"></div></div><span class="mini">${s2.satisfaction}</span></td>
+        <td class="${r === 'высокий' ? 'warn' : r === 'средний' ? '' : 'ok'}">${r}${s2.quitWarning ? ' · ⚠ предупредил об уходе' : ''}</td>
+        <td>${t ? `<span class="ok">🎓 учится: ${esc(t.skill)} · до дня ${t.endsDay}, 17:00</span>`
+          : (s2.unfulfilled || []).map(d => `<span class="chip" style="color:var(--red)">✖ ${esc(d)}</span>`).join('') || '<span class="mini">все требования выполнены</span>'}</td>
+        <td class="mini">${t ? 'смены сняты на время обучения' : s2.canTrain ? 'обучение: ' + fmtMoney(s2.trainingCost) + ' (+10 к навыку)' : '—'}</td></tr>`;
+    }).join('');
+    const gapRows = gaps.map(g => `<tr><td>${esc(bizName(g.b))}</td><td>${esc(g.skill)}</td><td class="num">${g.have}/${g.req} ч</td><td class="warn">не хватает ${g.need} ч/нед → нанять ${g.need >= 30 ? 'на полную' : 'на частичную'} занятость</td></tr>`).join('');
+    el.innerHTML = cards + `
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0">
+        <span class="mini">Выбрано: <b id="hrCount">0</b> · обучение <b id="hrTrainCost">${fmtMoney(0)}</b></span>
+        <span class="tab ${canWrite ? 'btn-blue' : 'disabled'}" style="padding:8px 14px" id="hrTrain">🎓 На обучение</span>
+        <select id="hrAssignBiz" class="plan-in" style="width:auto">${bizOptions(hrAssignSel)}</select>
+        <span class="tab ${canWrite ? '' : 'disabled'}" style="padding:8px 14px" id="hrAssign">➡ Перевести</span>
+        <span class="tab ${canWrite ? '' : 'disabled'}" style="padding:8px 14px" id="hrUnassign">⛔ Открепить</span>
+        <span id="hrStatus" class="mini">${canWrite ? 'Обучение снимает смены и длится до 17:00 следующего дня.' : 'Запись в игру недоступна'}</span>
+      </div>
+      <table><thead><tr><th></th><th>Сотрудник</th><th class="num">Уровень</th><th class="num">Ставка</th><th>Удовл.</th><th>Риск ухода</th><th>Статус / требования</th><th>Что сделать</th></tr></thead>
+      <tbody>${rowsS || '<tr><td colspan="8" class="empty">Никто не подошёл под фильтр</td></tr>'}</tbody></table>
+      <h2>Дефицит навыков (требуется планировкой vs назначено)</h2>
+      <table><thead><tr><th>Бизнес</th><th>Навык</th><th class="num">Есть/нужно</th><th>Рекомендация</th></tr></thead><tbody>${gapRows || '<tr><td colspan="4" class="empty">Дефицита нет 🎉</td></tr>'}</tbody></table>`;
+  }
+
+  // выбор строк
+  const pool = hrMode === 'candidates' ? cands : staff;
+  const refreshCount = () => {
+    const cnt = el.querySelector('#hrCount'); if (cnt) cnt.textContent = hrPicked.size;
+    const cost = el.querySelector('#hrTrainCost');
+    if (cost) cost.textContent = fmtMoney(pool.filter(x => hrPicked.has(x.id) && x.canTrain).reduce((a, x) => a + (x.trainingCost || 0), 0));
+  };
+  el.querySelectorAll('input.hr-pick').forEach(inp => inp.addEventListener('change', () => {
+    if (inp.checked) hrPicked.add(inp.dataset.id); else hrPicked.delete(inp.dataset.id);
+    refreshCount();
+  }));
+  refreshCount();
+
+  const ids = () => [...hrPicked];
+  const post = async (url, body, question) => {
+    if (!ids().length) { alert('Никто не выбран'); return; }
+    if (!confirm(question)) return;
+    const st = el.querySelector('#hrStatus'); st.textContent = 'Выполняю…';
+    try {
+      const res = await postJson(url, body);
+      st.innerHTML = res.ok
+        ? `<span class="ok">✔ Готово: ${res.changed}${res.cost ? ', списано ' + fmtMoney(res.cost) : ''}.</span> ${(res.warnings || []).map(esc).join('; ')}`
+        : `<span class="warn">✖ ${esc(res.error || 'ошибка')}</span> ${(res.warnings || []).map(esc).join('; ')}`;
+      if (res.ok) hrPicked.clear();
+    } catch (e) { st.innerHTML = `<span class="warn">✖ ${esc(e.message)}</span>`; }
+  };
+
+  const bind = (id, fn2) => { const b = el.querySelector(id); if (b && canWrite) b.addEventListener('click', fn2); };
+  const selA = el.querySelector('#hrAssignBiz'); if (selA) { if (!hrAssignSel) hrAssignSel = selA.value; selA.addEventListener('change', () => { hrAssignSel = selA.value; }); }
+  const selH = el.querySelector('#hrHireBiz'); if (selH) selH.addEventListener('change', () => { hrHireSel = selH.value; });
+  bind('#hrTrain', () => {
+    const sum = pool.filter(x => hrPicked.has(x.id) && x.canTrain).reduce((a, x) => a + (x.trainingCost || 0), 0);
+    post('/api/staff/train', { employeeIds: ids() }, `Отправить на обучение: ${hrPicked.size} чел.?\nСтоимость: ${fmtMoney(sum)}. Смены будут сняты, обучение закончится на следующий день в 17:00.`);
+  });
+  bind('#hrAssign', () => {
+    const key = el.querySelector('#hrAssignBiz').value, b = hrBusinesses().find(x => bkeyOf(x) === key);
+    if (!b) { alert('Выберите бизнес'); return; }
+    post('/api/staff/assign', { employeeIds: ids(), street: b.street, number: b.number },
+      `Перевести ${hrPicked.size} чел. в «${bizName(b)}»?\nТекущие смены на прежнем месте будут сняты.`);
+  });
+  bind('#hrUnassign', () => post('/api/staff/assign', { employeeIds: ids(), unassign: true },
+    `Открепить ${hrPicked.size} чел. от бизнеса? Смены будут сняты.`));
+  bind('#hrHire', () => {
+    const key = el.querySelector('#hrHireBiz').value, b = hrBusinesses().find(x => bkeyOf(x) === key);
+    post('/api/staff/candidates', { employeeIds: ids(), hire: true, street: b ? b.street : null, number: b ? b.number : 0 },
+      `Принять ${hrPicked.size} чел.${b ? ' в «' + bizName(b) + '»' : ' без назначения'}?`);
+  });
+  bind('#hrReject', () => post('/api/staff/candidates', { employeeIds: ids(), hire: false },
+    `Отклонить ${hrPicked.size} кандидатов? Вернуть их будет нельзя.`));
 }
 
 /* ================= Сеть: все точки, склады, логистика ================= */
@@ -1541,7 +2766,7 @@ function renderNetwork() {
   const nameOf = (s, n) => { const b = snap.businesses.find(x => x.street === s && x.number === n); return b ? bizName(b) : pretty(s) + ', ' + n; };
   const wsName = (s, n) => { const w = (snap.wholesalers || []).find(x => x.street === s && x.number === n); return w ? w.name : pretty(s) + ', ' + n; };
   const cRows = (lg.contracts || []).map(c => `<tr><td>${esc(wsName(c.wholesaleStreet, c.wholesaleNumber))} → <b>${esc(nameOf(c.street, c.number))}</b></td>
-      <td>${c.enabled ? '<span class="ok">вкл</span>' : '<span class="mini">выкл</span>'}${c.repeating ? ' · повтор' : ''}${c.urgent ? ' · срочно' : ''}</td><td class="num">день ${c.nextDeliveryDay}${snap.game ? ` <span class="mini">(${c.nextDeliveryDay - snap.game.day >= 0 ? 'через ' + (c.nextDeliveryDay - snap.game.day) + ' дн.' : 'просрочен'})</span>` : ''}</td><td class="num">${fmtMoney(c.fee)}</td>
+      <td>${c.enabled ? '<span class="ok">вкл</span>' : '<span class="mini">выкл</span>'}${c.repeating ? ' · повтор' : (c.enabled ? ' · <span class="warn" title="разовый заказ: после доставки контракт выключится и склад/магазин перестанет пополняться">разовый</span>' : '')}${c.urgent ? ' · срочно' : ''}</td><td class="num">день ${c.nextDeliveryDay}${snap.game ? ` <span class="mini">(${c.nextDeliveryDay - snap.game.day >= 0 ? 'через ' + (c.nextDeliveryDay - snap.game.day) + ' дн.' : 'просрочен'})</span>` : ''}</td><td class="num">${fmtMoney(c.fee)}</td>
       <td>${(c.items || []).filter(i => i.amount > 0).map(i => `<span class="chip">${esc(i.name)} × ${i.amount}</span>`).join('') || '<span class="mini">пусто</span>'}</td></tr>`).join('');
   const iRows = (lg.imports || []).map(p => `<tr><td>Импорт ${esc(pretty(p.importStreet))}, ${p.importNumber}</td><td>${p.active ? '<span class="ok">активен</span>' : '<span class="mini">неактивен</span>'}${p.repeating ? ' · повтор' : ''}</td><td class="num">день ${p.nextDeliveryDay}</td><td></td>
       <td>${(p.products || []).map(i => `<span class="chip">${esc(i.name)} × ${i.amount} → ${esc(nameOf(i.warehouseStreet, i.warehouseNumber))}</span>`).join('')}</td></tr>`).join('');
@@ -1591,6 +2816,12 @@ function renderFinances() {
 }
 
 function renderAll() {
+  // Пока пользователь печатает в поле — не перерисовываем: иначе ввод затирается данными опроса.
+  const ae = document.activeElement;
+  if (ae && (ae.tagName === 'INPUT' && ae.type !== 'checkbox' || ae.tagName === 'TEXTAREA' || (ae.tagName === 'SELECT' && !ae.closest('.toolbar'))) && ae.closest('section')) return;
+  try { renderRentals(); } catch (e) { /* вкладка аренды не должна ломать остальные */ }
+  try { renderLogistics(); } catch (e) { /* как и логистика */ }
+  try { renderSupply(); } catch (e) { /* и снабжение */ }
   if (!snap || snap.error) return;
   const g = snap.game;
   document.getElementById('gameClock').textContent =
@@ -1626,8 +2857,10 @@ setInterval(poll, 3000);
 poll();
 
 /* ---------- tabs & controls ---------- */
-document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
-  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+// Переключают разделы только вкладки навигации (у них есть data-tab); кнопки внутри разделов
+// используют тот же класс для вида и не должны трогать секции.
+document.querySelectorAll('.tab[data-tab]').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab[data-tab]').forEach(x => x.classList.remove('active'));
   document.querySelectorAll('section').forEach(x => x.classList.remove('active'));
   t.classList.add('active');
   document.getElementById(t.dataset.tab).classList.add('active');
@@ -1638,7 +2871,39 @@ document.getElementById('invFilter').addEventListener('input', renderInventory);
 document.getElementById('salesBuilding').addEventListener('change', e => { salesBuildingSel = e.target.value; renderSales(); });
 document.getElementById('salesFilter').addEventListener('input', renderSales);
 document.getElementById('staffBuilding').addEventListener('change', e => { staffBuildingSel = e.target.value; renderStaff(); });
+['rentType', 'rentHood', 'rentSort'].forEach(id => document.getElementById(id).addEventListener('change', e => {
+  if (id === 'rentType') rentTypeSel = e.target.value; else if (id === 'rentHood') rentHoodSel = e.target.value; else rentSortSel = e.target.value;
+  renderRentals();
+}));
+['rentMax', 'rentSqm'].forEach(id => document.getElementById(id).addEventListener('input', renderRentals));
+document.getElementById('rentFree').addEventListener('change', renderRentals);
+['supShopDays', 'supWhDays'].forEach(id => document.getElementById(id).addEventListener('input', renderSupply));
+document.getElementById('supAutoDest').checked = localStorage.getItem('ba_autoDest') !== '0';
+document.getElementById('supAutoDest').addEventListener('change', e => { localStorage.setItem('ba_autoDest', e.target.checked ? '1' : '0'); renderSupply(); });
+document.getElementById('logPlan').addEventListener('change', e => { logPlanSel = e.target.value; renderLogistics(); });
+document.getElementById('logDays').addEventListener('input', renderLogistics);
+document.getElementById('logRecalc').addEventListener('click', () => {
+  const plans = (snap.logistics || {}).plans || [];
+  const plan = plans.find(pl => pl.id === logPlanSel); if (!plan) return;
+  const days = Math.max(1, parseInt(document.getElementById('logDays').value) || 7);
+  (logDraft[plan.id] || []).forEach(d => {
+    const shop = snap.businesses.find(b => bkeyOf(b) === d.key);
+    ((shop && shop.inventory) || []).forEach(i => { const v = Math.ceil((i.soldPerDay || 0) * days); if (v > 0) d.targets[i.item] = v; });
+  });
+  saveLogDraft(); renderLogistics();
+});
+const hrSetMode = (m) => { hrMode = m; hrPicked.clear(); renderHr(); };
+document.getElementById('hrModeStaff').addEventListener('click', () => hrSetMode('staff'));
+document.getElementById('hrModeCand').addEventListener('click', () => hrSetMode('candidates'));
+document.getElementById('hrRole').addEventListener('change', e => { hrRoleSel = e.target.value; renderHr(); });
+document.getElementById('hrBiz').addEventListener('change', e => { hrBizSel = e.target.value; renderHr(); });
+document.getElementById('hrSort').addEventListener('change', e => { hrSortSel = e.target.value; renderHr(); });
+document.getElementById('hrSearch').addEventListener('input', renderHr);
 document.getElementById('purchaseBuilding').addEventListener('change', e => { purchaseBuildingSel = e.target.value; renderPurchase(); });
+// Переключение «Магазины / Склады»: у каждого режима свой список зданий, выбор сбрасываем.
+const setPoMode = (m) => { purchaseMode = m; purchaseBuildingSel = null; localStorage.setItem('ba_poMode', m); renderPurchase(); };
+document.getElementById('poModeShops').addEventListener('click', () => setPoMode('shops'));
+document.getElementById('poModeWh').addEventListener('click', () => setPoMode('warehouse'));
 document.getElementById('purchaseWholesaler').addEventListener('change', e => { purchaseWholesalerSel = e.target.value; renderPurchase(); });
 document.getElementById('purchaseDays').addEventListener('change', renderPurchase);
 document.getElementById('analyticsBuilding').addEventListener('change', e => { analyticsBuildingSel = e.target.value; renderAnalytics(); });

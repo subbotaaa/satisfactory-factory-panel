@@ -82,8 +82,10 @@ namespace BigAmbitionsMonitor
             var wsSettings = wsBld?.SpecialService?.settings as WholesaleStoreSettings;
             if (wsReg == null || wsSettings == null) { res.error = "оптовик не найден"; return res; }
 
-            bool hasStorage = b.itemInstances != null && b.itemInstances.Values.Any(x => x?.ItemCached != null && SafeHasTag(x.ItemCached, "ba:itemtag_isbusinessstorage"));
-            if (!hasStorage) { res.error = "в бизнесе нет хранилища (стеллаж/склад) для приёма доставки"; return res; }
+            // Оптовик разгружается в isbusinessstorage; у склада стеллажи помечены iswarehousestorage.
+            bool hasStorage = b.itemInstances != null && b.itemInstances.Values.Any(x => x?.ItemCached != null
+                && (SafeHasTag(x.ItemCached, "ba:itemtag_isbusinessstorage") || SafeHasTag(x.ItemCached, "ba:itemtag_iswarehousestorage")));
+            if (!hasStorage) { res.error = "нет хранилища (стеллаж/склад) для приёма доставки"; return res; }
 
             g.DeliveryContracts ??= new List<DeliveryContract>();
             var bAddr = b.Address;
@@ -147,6 +149,111 @@ namespace BigAmbitionsMonitor
             else if (req.urgent.HasValue) contract.isUrgentOrder = req.urgent.Value;
             res.nextDeliveryDay = contract.nextDeliveryDay;
             if (created) res.warnings.Insert(0, "создан новый контракт с оптовиком");
+            res.ok = true;
+            return res;
+        }
+
+        public class ImportItemDto { public string item; public int amount; }
+
+        public class ImportRequest
+        {
+            public string street; public int number;                  // склад-получатель
+            public string importStreet; public int importNumber;      // импортёр
+            public List<ImportItemDto> items;
+            public bool? repeating;   // повторяющийся заказ
+            public bool? urgent;      // срочная доставка (завтра)
+            public bool? smart;       // «умная доставка»: держать целевой запас на складе
+            public bool? active;      // false — отменить размещённый заказ (как «Отменить заказ» в BizMan)
+        }
+
+        /// <summary>
+        /// Заказ у импортёра (ImportPartnership). Партнёрство создаётся в игре через звонок
+        /// импортёру с назначением агента по закупкам — здесь мы только правим существующее:
+        /// количества, склад назначения и размещение заказа (как кнопка «Заказать» в BizMan).
+        /// ГЛАВНЫЙ ПОТОК.
+        /// </summary>
+        public static SimpleResult ApplyImportOrder(ImportRequest req)
+        {
+            var res = new SimpleResult();
+            var g = SaveGameManager.Current;
+            if (g == null) { res.error = "сейв не загружен"; return res; }
+            if (req == null) { res.error = "пустой запрос"; return res; }
+
+            var wh = FindBuilding(g, req.street, req.number);
+            if (wh == null) { res.error = "склад не найден"; return res; }
+            if (!(wh is Warehouse)) { res.error = "получатель импорта должен быть складом"; return res; }
+
+            var partnership = (g.importPartnerships ?? new List<ImportPartnership>())
+                .FirstOrDefault(x => x != null && x.importAddress != null
+                    && x.importAddress.streetName == req.importStreet && x.importAddress.streetNumber == req.importNumber);
+            if (partnership == null)
+            {
+                res.error = "нет контракта с этим импортёром — позвоните ему в игре и назначьте агента по закупкам";
+                return res;
+            }
+            if (!DeliveryHelper.CanModifyContract(partnership.nextDeliveryDay))
+            { res.error = "контракт нельзя менять сейчас (период блокировки перед доставкой)"; return res; }
+
+            partnership.products ??= new List<ImportProduct>();
+            if (req.active == false)
+            {
+                // PurchasingAgentPlanUI.CancelOrder: заказ снимается, позиции остаются на месте
+                partnership.isActive = false;
+                partnership.isUrgentOrder = false;
+                res.nextDeliveryDay = partnership.nextDeliveryDay;
+                try { SaveGameManager.MarkChange(); } catch { }
+                res.ok = true;
+                return res;
+            }
+            var whAddr = wh.Address;
+            bool limitsOff = false; try { limitsOff = DeliveryHelper.AreWholesaleAndImportLimitsDisabled(); } catch { }
+
+            foreach (var it in req.items ?? new List<ImportItemDto>())
+            {
+                if (it == null || string.IsNullOrEmpty(it.item)) continue;
+                var pr = partnership.products.FirstOrDefault(x => x != null && x.itemName == it.item);
+                if (pr == null) { pr = new ImportProduct { itemName = it.item, amount = 0 }; partnership.products.Add(pr); }
+                int amount = Math.Max(0, it.amount);
+                if (!limitsOff && amount > 0)
+                {
+                    int max = int.MaxValue;
+                    try
+                    {
+                        if (DeliveryHelper.ShouldLimitImporterMaxAmount(it.item, partnership.importAddress))
+                            max = pr.ItemCached.maxOrderAmountPerImporter
+                                - ImportPartnership.GetItemAmountOrderedThisWeek(partnership.importAddress, it.item);
+                    }
+                    catch { }
+                    if (amount > max) { res.warnings.Add($"{it.item}: обрезано до недельного лимита {Math.Max(0, max)}"); amount = Math.Max(0, max); }
+                }
+                pr.amount = amount;
+                if (amount > 0) pr.assignedWarehouse = whAddr;   // без склада игра не даст разместить заказ
+                res.changed++;
+            }
+
+            if (req.repeating.HasValue) partnership.isRepeatingOrder = req.repeating.Value;
+            // «Умную доставку» игра разрешает переключать только у неразмещённого заказа
+            if (req.smart.HasValue && !partnership.isActive) partnership.isTarget = req.smart.Value;
+
+            bool hasItems = partnership.products.Any(x => x != null && x.amount > 0);
+            if (!hasItems)
+            {
+                // всё обнулили — это отмена заказа, как CancelOrder в игре
+                partnership.isActive = false; partnership.isUrgentOrder = false;
+                try { SaveGameManager.MarkChange(); } catch { }
+                res.ok = true; res.warnings.Add("все позиции по нулям — заказ снят");
+                return res;
+            }
+            var noWarehouse = partnership.products.FirstOrDefault(x => x != null && x.amount > 0
+                && (x.assignedWarehouse == null || Streets.AddressHelper.IsUndefined(x.assignedWarehouse)));
+            if (noWarehouse != null) { res.error = $"для «{noWarehouse.itemName}» не назначен склад"; return res; }
+
+            bool urgent = req.urgent ?? partnership.isUrgentOrder;
+            partnership.isActive = true;
+            partnership.isUrgentOrder = urgent;
+            partnership.nextDeliveryDay = urgent ? g.Day + 1 : DeliveryHelper.GetNextDeliveryDay();
+            res.nextDeliveryDay = partnership.nextDeliveryDay;
+            try { SaveGameManager.MarkChange(); } catch { }
             res.ok = true;
             return res;
         }

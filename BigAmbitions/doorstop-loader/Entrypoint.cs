@@ -47,6 +47,19 @@ namespace Doorstop
                 SnapshotCollector.UnfulfilledFor = id => MainThreadCache.Unfulfilled.TryGetValue(id ?? "", out var l) ? l : null;
                 SnapshotCollector.WholesalersProvider = () => MainThreadCache.Wholesalers;
                 SnapshotCollector.DeliveryProvider = () => MainThreadCache.Delivery;
+                SnapshotCollector.RentalsProvider = () => MainThreadCache.Rentals;
+                SnapshotCollector.ImportersProvider = () => MainThreadCache.Importers;
+                SnapshotCollector.StreetNameFor = k => MainThreadCache.StreetNameOf(k);
+                SnapshotCollector.AllowedSkillsFor = k => MainThreadCache.Buildings.TryGetValue(k, out var d) ? d.allowedSkills : null;
+                SnapshotCollector.TrainingCostFor = id => MainThreadCache.TrainingCost.TryGetValue(id ?? "", out var c) ? c : 0f;
+                SnapshotCollector.BoxSizesProvider = () => MainThreadCache.BoxSizes;
+                SnapshotCollector.ServicesProvider = () => MainThreadCache.Services.ToList();
+                Autopilot.Init(_root, Log);
+                SnapshotCollector.AutopilotProvider = () => Autopilot.State();
+                SnapshotCollector.MaxDestinationsFor = id => MainThreadCache.MaxDestinations.TryGetValue(id ?? "", out var m) ? m : 0;
+                SnapshotCollector.WarehouseInfoFor = k => MainThreadCache.Buildings.TryGetValue(k, out var d)
+                    ? (object)new { business = d.storageBusiness, warehouse = d.storageWarehouse, vehicles = d.vehicles, containers = d.containers }
+                    : null;
 
                 // Мост в главный поток — подписываемся здесь, при инициализации Mono, до первого
                 // кадра: в этот момент список колбэков ещё никто не перебирает (нет гонки).
@@ -97,7 +110,7 @@ namespace Doorstop
                     // Если hook не встал при старте — пробуем ещё (RegisterCallback под lock, безопасно).
                     if (!MainThreadDispatcher.Hooked) MainThreadDispatcher.Hook(null);
                     // Раз в 5 с — пересчёт «рискованного» кэша в главном потоке (fire-and-forget).
-                    if (tick++ % 5 == 0) MainThreadDispatcher.Enqueue(MainThreadCache.Refresh);
+                    if (tick++ % 5 == 0) { MainThreadDispatcher.Enqueue(MainThreadCache.Refresh); MainThreadDispatcher.Enqueue(Autopilot.Tick); }
                     var g = SaveGameManager.Current;
                     _server.SetSnapshot(SnapshotCollector.BuildSnapshotJson(g));
                 }
@@ -133,6 +146,72 @@ namespace Doorstop
                 var err = MainThreadDispatcher.RunAndWait(() => result = GameWriters.SetPrices(req), 6000);
                 if (err != null) return "{\"ok\":false,\"error\":" + Newtonsoft.Json.JsonConvert.ToString(err) + "}";
                 Log($"prices set: changed={result?.changed} ok={result?.ok} {result?.error}");
+                return Newtonsoft.Json.JsonConvert.SerializeObject(result);
+            }
+            if (path == "/api/autopilot/config")
+            {
+                Autopilot.Config cfg;
+                try { cfg = Newtonsoft.Json.JsonConvert.DeserializeObject<Autopilot.Config>(body); }
+                catch (Exception e) { return "{\"ok\":false,\"error\":" + Newtonsoft.Json.JsonConvert.ToString("bad json: " + e.Message) + "}"; }
+                Autopilot.SetConfig(cfg);
+                Log($"autopilot config: enabled={cfg?.enabled} mode={cfg?.mode} budget={cfg?.weeklyBudget}");
+                return "{\"ok\":true}";
+            }
+            if (path == "/api/autopilot/run")
+            {
+                Autopilot.RunResult result = null;
+                var err = MainThreadDispatcher.RunAndWait(() => result = Autopilot.Run(manual: true), 15000);
+                if (err != null) return "{\"ok\":false,\"error\":" + Newtonsoft.Json.JsonConvert.ToString(err) + "}";
+                Log($"autopilot run: targets={result?.targets} orders={result?.orders} cost={result?.cost} ok={result?.ok} {result?.error}");
+                return Newtonsoft.Json.JsonConvert.SerializeObject(result);
+            }
+            if (path == "/api/logistics/apply")
+            {
+                LogisticsWriter.PlanRequest req;
+                try { req = Newtonsoft.Json.JsonConvert.DeserializeObject<LogisticsWriter.PlanRequest>(body); }
+                catch (Exception e) { return "{\"ok\":false,\"error\":" + Newtonsoft.Json.JsonConvert.ToString("bad json: " + e.Message) + "}"; }
+                LogisticsWriter.Result result = null;
+                var err = MainThreadDispatcher.RunAndWait(() => result = LogisticsWriter.Apply(req), 6000);
+                if (err != null) return "{\"ok\":false,\"error\":" + Newtonsoft.Json.JsonConvert.ToString(err) + "}";
+                Log($"logistics apply: dest={result?.destinations} targets={result?.targets} ok={result?.ok} {result?.error}");
+                return Newtonsoft.Json.JsonConvert.SerializeObject(result);
+            }
+            if (path == "/api/staff/train" || path == "/api/staff/assign" || path == "/api/staff/candidates")
+            {
+                StaffWriter.Result result = null;
+                string err = null;
+                try
+                {
+                    if (path == "/api/staff/train")
+                    {
+                        var r = Newtonsoft.Json.JsonConvert.DeserializeObject<StaffWriter.TrainRequest>(body);
+                        err = MainThreadDispatcher.RunAndWait(() => result = StaffWriter.Train(r), 6000);
+                    }
+                    else if (path == "/api/staff/assign")
+                    {
+                        var r = Newtonsoft.Json.JsonConvert.DeserializeObject<StaffWriter.AssignRequest>(body);
+                        err = MainThreadDispatcher.RunAndWait(() => result = StaffWriter.Assign(r), 6000);
+                    }
+                    else
+                    {
+                        var r = Newtonsoft.Json.JsonConvert.DeserializeObject<StaffWriter.CandidateRequest>(body);
+                        err = MainThreadDispatcher.RunAndWait(() => result = StaffWriter.Candidates(r), 6000);
+                    }
+                }
+                catch (Exception e) { return "{\"ok\":false,\"error\":" + Newtonsoft.Json.JsonConvert.ToString("bad json: " + e.Message) + "}"; }
+                if (err != null) return "{\"ok\":false,\"error\":" + Newtonsoft.Json.JsonConvert.ToString(err) + "}";
+                Log($"{path}: changed={result?.changed} cost={result?.cost} ok={result?.ok} {result?.error}");
+                return Newtonsoft.Json.JsonConvert.SerializeObject(result);
+            }
+            if (path == "/api/import/apply")
+            {
+                GameWriters.ImportRequest req;
+                try { req = Newtonsoft.Json.JsonConvert.DeserializeObject<GameWriters.ImportRequest>(body); }
+                catch (Exception e) { return "{\"ok\":false,\"error\":" + Newtonsoft.Json.JsonConvert.ToString("bad json: " + e.Message) + "}"; }
+                GameWriters.SimpleResult result = null;
+                var err = MainThreadDispatcher.RunAndWait(() => result = GameWriters.ApplyImportOrder(req), 6000);
+                if (err != null) return "{\"ok\":false,\"error\":" + Newtonsoft.Json.JsonConvert.ToString(err) + "}";
+                Log($"import apply: changed={result?.changed} day={result?.nextDeliveryDay} ok={result?.ok} {result?.error}");
                 return Newtonsoft.Json.JsonConvert.SerializeObject(result);
             }
             if (path == "/api/order/apply")

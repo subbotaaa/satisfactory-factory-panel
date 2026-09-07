@@ -118,6 +118,11 @@ namespace BigAmbitionsMonitor
                 ["logistics"] = CollectLogistics(g),
                 ["wholesalers"] = CollectWholesalers(),
                 ["delivery"] = SafeGet(() => DeliveryProvider?.Invoke(), (object)null),
+                ["rentals"] = SafeGet(() => RentalsProvider?.Invoke(), (object)null),
+                ["importers"] = SafeGet(() => ImportersProvider?.Invoke(), (object)null),
+                ["boxSizes"] = SafeGet(() => BoxSizesProvider?.Invoke(), (object)null),
+                ["services"] = SafeGet(() => ServicesProvider?.Invoke(), (object)null),
+                ["autopilot"] = SafeGet(() => AutopilotProvider?.Invoke(), (object)null),
             };
             return JsonConvert.SerializeObject(snapshot);
         }
@@ -134,6 +139,16 @@ namespace BigAmbitionsMonitor
         public static Func<string, List<string>> UnfulfilledFor;        // по id сотрудника
         public static Func<object> WholesalersProvider;                 // список оптовиков (из кэша)
         public static Func<object> DeliveryProvider;                    // сроки доставки (из кэша)
+        public static Func<string, object> WarehouseInfoFor;            // по ключу здания: хранилища и автопарк
+        public static Func<object> RentalsProvider;                     // свободные здания в аренду (из кэша)
+        public static Func<object> ImportersProvider;                   // импортёры и их каталог (из кэша)
+        public static Func<string, string> StreetNameFor;               // «ba:street_fifthavenue» → «5th Avenue»
+        public static Func<string, List<string>> AllowedSkillsFor;      // по ключу здания: какие навыки принимает
+        public static Func<string, float> TrainingCostFor;              // по id сотрудника: цена обучения
+        public static Func<string, int> MaxDestinationsFor;             // по id плана логиста: лимит пунктов
+        public static Func<object> BoxSizesProvider;                    // товар → размер коробки (из кэша)
+        public static Func<object> ServicesProvider;                    // услуги — продаются, но не доставляются
+        public static Func<object> AutopilotProvider;                   // состояние автопилота (конфиг + журнал)
 
         private static float Safe(Func<float> f) { try { return f(); } catch { return 0f; } }
         private static T SafeGet<T>(Func<T> f, T def) { try { var v = f(); return v == null ? def : v; } catch { return def; } }
@@ -153,6 +168,18 @@ namespace BigAmbitionsMonitor
                 if (e == null) continue;
                 try
                 {
+                    var skl = e.characterData?.skills;
+                    var primary = (skl != null && skl.Count > 0) ? skl[0] : null;
+                    // Обучение: сессия заканчивается на следующий день в 17:00 (EmployeeInstance.RunHourly)
+                    object training = null;
+                    if (e.trainingSession != null)
+                        training = new
+                        {
+                            skill = ItemName(e.trainingSession.skill),
+                            startDay = e.trainingSession.startDay,
+                            endsDay = e.trainingSession.startDay + 1,
+                            endsHour = 17,
+                        };
                     staff.Add(new
                     {
                         id = e.id,
@@ -160,12 +187,19 @@ namespace BigAmbitionsMonitor
                         street = e.assignedAddress?.streetName,
                         number = e.assignedAddress?.streetNumber ?? 0,
                         skill = SafeStr(() => ItemName(e.GetPrimarySkill())),
+                        skillValue = primary == null ? 0 : (int)Math.Round(primary.value),
+                        skills = skl == null ? new List<object>() : skl.Where(x => x != null)
+                            .Select(x => (object)new { name = ItemName(x.name), value = (int)Math.Round(x.value) }).ToList(),
                         wage = e.hourlyWage,
+                        weeklyHours = e.assignedWeeklyHours,
                         satisfaction = (int)Math.Round(e.satisfaction),
                         quitWarning = e.hasSendQuitWarning,
                         unfulfilled = Unfulfilled(e),
                         demands = (e.demands ?? new List<string>()).Select(ItemName).ToList(),
                         absent = e.isAbsent,
+                        training,
+                        trainingCost = SafeGet(() => TrainingCostFor == null ? 0f : TrainingCostFor(e.id), 0f),
+                        canTrain = primary != null && e.trainingSession == null && !e.isAbsent && primary.value < 100f,
                     });
                 }
                 catch { }
@@ -185,6 +219,8 @@ namespace BigAmbitionsMonitor
                         wage = c.hourlyWage,
                         skills = skl == null ? new List<object>() : skl.Where(s => s != null).Select(s => (object)new { name = ItemName(s.name), value = (int)Math.Round(s.value) }).ToList(),
                         demands = (c.demands ?? new List<string>()).Select(ItemName).ToList(),
+                        skillKeys = skl == null ? new List<string>() : skl.Where(s2 => s2 != null).Select(s2 => s2.name).ToList(),
+                        skillValue = (skl != null && skl.Count > 0) ? (int)Math.Round(skl[0].value) : 0,
                         fromJobBoard = c.candidateInfo?.fromJobBoard ?? false,
                         hoursLeft = c.candidateInfo?.hoursUntilExpiring ?? 0,
                     });
@@ -228,13 +264,24 @@ namespace BigAmbitionsMonitor
                 if (p == null) continue;
                 try
                 {
+                    string agent = null;
+                    if (!string.IsNullOrEmpty(p.employeeInstanceId))
+                    {
+                        var emp = (g.EmployeeInstances ?? new List<EmployeeInstance>())
+                            .FirstOrDefault(x => x != null && x.id == p.employeeInstanceId);
+                        agent = emp?.characterData?.name;
+                    }
                     imports.Add(new
                     {
+                        id = p.id,
                         importStreet = p.importAddress?.streetName, importNumber = p.importAddress?.streetNumber ?? 0,
-                        active = p.isActive, repeating = p.isRepeatingOrder, nextDeliveryDay = p.nextDeliveryDay,
+                        active = p.isActive, repeating = p.isRepeatingOrder, urgent = p.isUrgentOrder,
+                        smart = p.isTarget,               // «умная доставка»: держать целевой запас на складе
+                        agent, nextDeliveryDay = p.nextDeliveryDay,
                         products = (p.products ?? new List<ImportProduct>()).Where(x => x != null).Select(x => (object)new
                         {
                             item = x.itemName, name = ItemName(x.itemName), amount = x.amount,
+                            orderedThisWeek = x.amountOrderedThisWeek,
                             warehouseStreet = x.assignedWarehouse?.streetName, warehouseNumber = x.assignedWarehouse?.streetNumber ?? 0,
                         }).ToList(),
                     });
@@ -260,8 +307,20 @@ namespace BigAmbitionsMonitor
                                     if (t != null) targets.Add(new { item = t.itemName, name = ItemName(t.itemName), target = t.targetAmount });
                             destList.Add(new { street = d.deliveryTargetAddress?.streetName, number = d.deliveryTargetAddress?.streetNumber ?? 0, targets });
                         }
+                    string manager = null;
+                    if (!string.IsNullOrEmpty(p.assignedEmployeeId))
+                    {
+                        var emp = (g.EmployeeInstances ?? new List<EmployeeInstance>())
+                            .FirstOrDefault(x => x != null && x.id == p.assignedEmployeeId);
+                        manager = emp?.characterData?.name;
+                    }
                     plans.Add(new
                     {
+                        id = p.id,
+                        manager,
+                        managerId = p.assignedEmployeeId,
+                        isFactory = p.isFactory,
+                        maxDestinations = SafeInt(() => MaxDestinationsFor == null ? 0 : MaxDestinationsFor(p.id)),
                         sourceStreet = p.targetAddress?.streetName, sourceNumber = p.targetAddress?.streetNumber ?? 0,
                         destinations = destList,
                     });
@@ -312,7 +371,13 @@ namespace BigAmbitionsMonitor
                 number = b.StreetNumber,
                 name = b.BusinessName,
                 type = b.businessTypeName,
+                streetLabel = SafeStr(() => StreetNameFor == null ? null : StreetNameFor(b.StreetName)),
+                allowedSkills = SafeGet(() => AllowedSkillsFor == null ? null : AllowedSkillsFor(AddrKey(b.StreetName, b.StreetNumber))
+                    ?.Select(x => ItemName(x)).ToList(), new List<string>()),
+                address = SafeStr(() => StreetNameFor == null ? null : b.StreetNumber + " " + StreetNameFor(b.StreetName)),
                 hasBusiness = b.HasEstablishedBusiness,
+                isWarehouse = b.businessTypeName == "ba:businesstype_warehouse",
+                storage = SafeGet(() => WarehouseInfoFor == null ? null : WarehouseInfoFor(AddrKey(b.StreetName, b.StreetNumber)), (object)null),
                 rentPerDay = b.RentPerDay,
                 temporarilyClosed = b.temporarilyClosed,
                 customerCapacity = b.customerCapacity,
